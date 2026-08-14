@@ -1,0 +1,221 @@
+export type SyncMode = 'percent' | 'anchor';
+export type LeaderMode = 'active' | 'fixed';
+
+export interface TabRef {
+  tabId: number;
+  windowId: number;
+  url: string;
+  title?: string;
+}
+
+export interface Anchor {
+  id: string;
+  /** Progress 0..1 keyed by tabId at the time the anchor was created.
+   * After restore, remapped via tabUrls. */
+  points: Record<number, number>;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  tabIds: number[];
+  /** URL snapshot for restore after browser restart */
+  tabUrls: Record<number, string>;
+  /** Title snapshot for UI */
+  tabTitles: Record<number, string>;
+  syncEnabled: boolean;
+  syncMode: SyncMode;
+  leaderMode: LeaderMode;
+  fixedLeaderTabId?: number;
+  /** Last known active leader when leaderMode === 'active' */
+  activeLeaderTabId?: number;
+  anchors: Anchor[];
+}
+
+export interface AppState {
+  groups: Group[];
+  activeGroupId?: string;
+}
+
+export interface AdapterStatus {
+  id: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export type MessageType =
+  | 'GET_STATE'
+  | 'STATE'
+  | 'CREATE_GROUP'
+  | 'ADD_TAB_TO_GROUP'
+  | 'REMOVE_TAB_FROM_GROUP'
+  | 'RENAME_GROUP'
+  | 'DELETE_GROUP'
+  | 'SET_ACTIVE_GROUP'
+  | 'TOGGLE_SYNC'
+  | 'SET_SYNC_MODE'
+  | 'SET_LEADER_MODE'
+  | 'SET_FIXED_LEADER'
+  | 'ADD_ANCHOR'
+  | 'CLEAR_ANCHORS'
+  | 'SET_SCROLL_PERCENT'
+  | 'SCROLL_PROGRESS'
+  | 'APPLY_SCROLL'
+  | 'GET_PROGRESS'
+  | 'PROGRESS'
+  | 'GET_ADAPTER_STATUS'
+  | 'ADAPTER_STATUS'
+  | 'ERROR';
+
+export interface BaseMessage {
+  type: MessageType;
+}
+
+export interface GetStateMessage extends BaseMessage {
+  type: 'GET_STATE';
+}
+
+export interface StateMessage extends BaseMessage {
+  type: 'STATE';
+  state: AppState;
+}
+
+export interface CreateGroupMessage extends BaseMessage {
+  type: 'CREATE_GROUP';
+}
+
+export interface AddTabToGroupMessage extends BaseMessage {
+  type: 'ADD_TAB_TO_GROUP';
+  groupId?: string;
+}
+
+export interface RemoveTabFromGroupMessage extends BaseMessage {
+  type: 'REMOVE_TAB_FROM_GROUP';
+  groupId: string;
+  tabId: number;
+}
+
+export interface RenameGroupMessage extends BaseMessage {
+  type: 'RENAME_GROUP';
+  groupId: string;
+  name: string;
+}
+
+export interface DeleteGroupMessage extends BaseMessage {
+  type: 'DELETE_GROUP';
+  groupId: string;
+}
+
+export interface SetActiveGroupMessage extends BaseMessage {
+  type: 'SET_ACTIVE_GROUP';
+  groupId: string;
+}
+
+export interface SetScrollPercentMessage extends BaseMessage {
+  type: 'SET_SCROLL_PERCENT';
+  groupId: string;
+  /** 0..100 */
+  percent: number;
+}
+
+export interface ToggleSyncMessage extends BaseMessage {
+  type: 'TOGGLE_SYNC';
+  groupId?: string;
+  enabled?: boolean;
+}
+
+export interface SetSyncModeMessage extends BaseMessage {
+  type: 'SET_SYNC_MODE';
+  groupId: string;
+  syncMode: SyncMode;
+}
+
+export interface SetLeaderModeMessage extends BaseMessage {
+  type: 'SET_LEADER_MODE';
+  groupId: string;
+  leaderMode: LeaderMode;
+}
+
+export interface SetFixedLeaderMessage extends BaseMessage {
+  type: 'SET_FIXED_LEADER';
+  groupId: string;
+  tabId: number;
+}
+
+export interface AddAnchorMessage extends BaseMessage {
+  type: 'ADD_ANCHOR';
+  groupId: string;
+}
+
+export interface ClearAnchorsMessage extends BaseMessage {
+  type: 'CLEAR_ANCHORS';
+  groupId: string;
+}
+
+export interface ScrollProgressMessage extends BaseMessage {
+  type: 'SCROLL_PROGRESS';
+  progress: number;
+}
+
+export interface ApplyScrollMessage extends BaseMessage {
+  type: 'APPLY_SCROLL';
+  progress: number;
+}
+
+export interface GetProgressMessage extends BaseMessage {
+  type: 'GET_PROGRESS';
+}
+
+export interface ProgressMessage extends BaseMessage {
+  type: 'PROGRESS';
+  progress: number;
+}
+
+export interface GetAdapterStatusMessage extends BaseMessage {
+  type: 'GET_ADAPTER_STATUS';
+}
+
+export interface AdapterStatusMessage extends BaseMessage {
+  type: 'ADAPTER_STATUS';
+  status: AdapterStatus;
+}
+
+export interface ErrorMessage extends BaseMessage {
+  type: 'ERROR';
+  error: string;
+}
+
+export type ExtensionMessage =
+  | GetStateMessage
+  | StateMessage
+  | CreateGroupMessage
+  | AddTabToGroupMessage
+  | RemoveTabFromGroupMessage
+  | RenameGroupMessage
+  | DeleteGroupMessage
+  | SetActiveGroupMessage
+  | ToggleSyncMessage
+  | SetSyncModeMessage
+  | SetLeaderModeMessage
+  | SetFixedLeaderMessage
+  | AddAnchorMessage
+  | ClearAnchorsMessage
+  | SetScrollPercentMessage
+  | ScrollProgressMessage
+  | ApplyScrollMessage
+  | GetProgressMessage
+  | ProgressMessage
+  | GetAdapterStatusMessage
+  | AdapterStatusMessage
+  | ErrorMessage;
+
+export const STORAGE_KEY = 'scrollSyncState';
+
+export function emptyState(): AppState {
+  return { groups: [] };
+}
+
+export function createId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}

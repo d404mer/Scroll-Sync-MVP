@@ -1,0 +1,170 @@
+:root {
+  color-scheme: light;
+  --bg: #f7f4ef;
+  --ink: #1c1917;
+  --muted: #78716c;
+  --line: #d6d3d1;
+  --accent: #0f766e;
+  --accent-ink: #f0fdfa;
+  --danger: #b91c1c;
+  --panel: #ffffff;
+  font-family: "Segoe UI", "IBM Plex Sans", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 340px;
+  padding: 14px;
+  background:
+    radial-gradient(circle at top left, #ccfbf1 0%, transparent 45%),
+    linear-gradient(180deg, var(--bg), #efeae3);
+  color: var(--ink);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #44403c;
+  color: #fafaf9;
+}
+
+button:hover {
+  filter: brightness(1.05);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+
+select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: var(--panel);
+  font: inherit;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.row.gap {
+  gap: 8px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+h2 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+li {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+li .meta {
+  min-width: 0;
+}
+
+li .title {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+li .url {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+li button {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: #78716c;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+kbd {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  background: #e7e5e4;
+  border-radius: 4px;
+  padding: 1px 4px;
+}

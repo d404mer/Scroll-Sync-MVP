@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scroll Sync</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Scroll Sync</h1>
+      <p id="adapter-status" class="muted">Адаптер: …</p>
+    </header>
+
+    <section class="actions">
+      <button id="btn-create" type="button">Создать группу</button>
+      <button id="btn-add" type="button">Добавить вкладку</button>
+    </section>
+
+    <section>
+      <label class="field">
+        <span>Активная группа</span>
+        <select id="group-select"></select>
+      </label>
+    </section>
+
+    <section id="group-panel" class="hidden">
+      <div class="row">
+        <label class="check">
+          <input type="checkbox" id="sync-enabled" />
+          Синхронизация включена
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Режим синхронизации</span>
+        <select id="sync-mode">
+          <option value="percent">Процентный</option>
+          <option value="anchor">Якорный</option>
+        </select>
+      </label>
+      <p id="anchor-hint" class="muted hidden">
+        Для якорного режима нужно минимум 2 якоря (до этого используется процентный).
+      </p>
+
+      <div class="row gap">
+        <button id="btn-add-anchor" type="button">Добавить якорь</button>
+        <button id="btn-clear-anchors" type="button" class="secondary">
+          Очистить якоря
+        </button>
+      </div>
+      <p id="anchor-count" class="muted">Якоря: 0</p>
+
+      <label class="field">
+        <span>Режим лидера</span>
+        <select id="leader-mode">
+          <option value="active">Активная вкладка</option>
+          <option value="fixed">Фиксированный</option>
+        </select>
+      </label>
+
+      <label class="field" id="fixed-leader-wrap">
+        <span>Фиксированный лидер</span>
+        <select id="fixed-leader"></select>
+      </label>
+
+      <h2>Вкладки</h2>
+      <ul id="tab-list"></ul>
+    </section>
+
+    <p id="empty" class="muted">
+      Групп пока нет. Откройте две страницы и нажмите
+      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>, затем добавьте вторую вкладку через
+      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>.
+    </p>
+
+    <p id="error" class="error hidden"></p>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
