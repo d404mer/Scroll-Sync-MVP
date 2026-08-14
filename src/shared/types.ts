@@ -23,6 +23,11 @@ export interface Group {
   tabUrls: Record<number, string>;
   /** Title snapshot for UI */
   tabTitles: Record<number, string>;
+  /**
+   * Scroll speed scale per tab (1 = 100%).
+   * 0.5 = twice as slow, 2 = twice as fast, -1 = inverted.
+   */
+  scrollScales: Record<number, number>;
   syncEnabled: boolean;
   syncMode: SyncMode;
   leaderMode: LeaderMode;
@@ -60,6 +65,7 @@ export type MessageType =
   | 'ADD_ANCHOR'
   | 'CLEAR_ANCHORS'
   | 'SET_SCROLL_PERCENT'
+  | 'SET_TAB_SCROLL_SCALE'
   | 'SCROLL_PROGRESS'
   | 'APPLY_SCROLL'
   | 'GET_PROGRESS'
@@ -115,8 +121,16 @@ export interface SetActiveGroupMessage extends BaseMessage {
 export interface SetScrollPercentMessage extends BaseMessage {
   type: 'SET_SCROLL_PERCENT';
   groupId: string;
-  /** 0..100 */
+  /** Logical percent; may be negative or >100, then scaled per tab */
   percent: number;
+}
+
+export interface SetTabScrollScaleMessage extends BaseMessage {
+  type: 'SET_TAB_SCROLL_SCALE';
+  groupId: string;
+  tabId: number;
+  /** Multiplier: 1 = 100%, 0.5 = slower, -1 = inverted */
+  scale: number;
 }
 
 export interface ToggleSyncMessage extends BaseMessage {
@@ -202,6 +216,7 @@ export type ExtensionMessage =
   | AddAnchorMessage
   | ClearAnchorsMessage
   | SetScrollPercentMessage
+  | SetTabScrollScaleMessage
   | ScrollProgressMessage
   | ApplyScrollMessage
   | GetProgressMessage

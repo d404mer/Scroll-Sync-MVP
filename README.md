@@ -31,6 +31,14 @@ npm run dev
 
 Переназначение: `chrome://extensions/shortcuts` (или аналог в Edge).
 
+## Логи расширения
+
+- **Service worker (фон):** `chrome://extensions` → Scroll Sync → ссылка **Service worker** / **Просмотреть представления в службе** — откроется DevTools с Console.
+- **Popup:** правый клик по иконке расширения → **Просмотреть всплывающее окно** (Inspect popup).
+- **Content script (на странице):** F12 на самой вкладке (AO3/Docs/…) → Console; фильтр по контексту расширения, если сообщений много.
+
+В Edge пути те же: `edge://extensions`.
+
 ## Быстрый старт
 
 1. Откройте две страницы (например, глава AO3 + Google Docs / Фикбук / другая вкладка AO3).

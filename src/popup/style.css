@@ -1,14 +1,6 @@
 :root {
-  color-scheme: light;
-  --bg: #f7f4ef;
-  --ink: #1c1917;
-  --muted: #78716c;
-  --line: #d6d3d1;
-  --accent: #0f766e;
-  --accent-ink: #f0fdfa;
-  --danger: #b91c1c;
-  --panel: #ffffff;
-  font-family: "Segoe UI", "IBM Plex Sans", sans-serif;
+  color-scheme: dark;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -18,89 +10,164 @@
 body {
   margin: 0;
   width: 340px;
-  padding: 14px;
-  background:
-    radial-gradient(circle at top left, #ccfbf1 0%, transparent 45%),
-    linear-gradient(180deg, var(--bg), #efeae3);
-  color: var(--ink);
+  padding: 10px;
+  background: #111;
+  color: #eee;
 }
 
 header h1 {
   margin: 0;
-  font-size: 18px;
-  letter-spacing: 0.02em;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .muted {
-  color: var(--muted);
+  color: #999;
   font-size: 12px;
   margin: 4px 0 0;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin: 10px 0;
+  border: 1px solid #666;
+}
+
+.tab {
+  border: 0;
+  border-radius: 0;
+  background: #1a1a1a;
+  color: #999;
+  padding: 8px;
+}
+
+.tab.active {
+  background: #333;
+  color: #eee;
+}
+
+.tab:hover {
+  background: #444;
+  color: #eee;
+  border-color: transparent;
+}
+
+.tab-panel {
+  margin: 0;
 }
 
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin: 12px 0;
+  gap: 6px;
+  margin: 10px 0;
 }
 
 button {
   appearance: none;
-  border: 0;
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  border: 1px solid #888;
+  border-radius: 0;
+  padding: 6px 8px;
+  background: #222;
+  color: #eee;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
 }
 
 button.secondary {
-  background: #44403c;
-  color: #fafaf9;
+  background: #1a1a1a;
+  color: #eee;
+}
+
+button.danger {
+  background: #c00;
+  border-color: #900;
+  color: #fff;
 }
 
 button:hover {
-  filter: brightness(1.05);
+  background: #eee;
+  color: #111;
+  border-color: #eee;
+}
+
+button.danger:hover {
+  background: #900;
+  color: #fff;
+  border-color: #900;
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 10px 0;
+  margin: 8px 0;
   font-size: 12px;
 }
 
-select {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 7px 8px;
-  background: var(--panel);
+select,
+input[type="text"],
+input[type="number"] {
+  border: 1px solid #666;
+  border-radius: 0;
+  padding: 5px 6px;
+  background: #1a1a1a;
   font: inherit;
+  color: #eee;
+}
+
+input[type="number"] {
+  width: 64px;
+}
+
+.row.gap.grow {
+  width: 100%;
+}
+
+.row.gap.grow > input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.scroll-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scroll-control input[type="range"] {
+  width: 100%;
+}
+
+.unit {
+  font-size: 12px;
+  color: #999;
 }
 
 .row {
   display: flex;
   align-items: center;
-  margin: 8px 0;
+  margin: 6px 0;
 }
 
 .row.gap {
-  gap: 8px;
+  gap: 6px;
 }
 
 .check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 12px;
 }
 
 h2 {
-  margin: 14px 0 6px;
-  font-size: 13px;
+  margin: 12px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 ul {
@@ -109,17 +176,17 @@ ul {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 li {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
+  background: #1a1a1a;
+  border: 1px solid #555;
+  border-radius: 0;
+  padding: 6px;
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   align-items: flex-start;
 }
 
@@ -129,7 +196,7 @@ li .meta {
 
 li .title {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -138,7 +205,7 @@ li .title {
 
 li .url {
   font-size: 11px;
-  color: var(--muted);
+  color: #999;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -146,9 +213,23 @@ li .url {
 }
 
 li button {
-  padding: 4px 8px;
+  padding: 3px 6px;
   font-size: 11px;
-  background: #78716c;
+}
+
+.scale-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.scale-row input[type="number"] {
+  width: 72px;
+}
+
+.scale-row .unit {
+  margin-right: auto;
 }
 
 .hidden {
@@ -156,15 +237,17 @@ li button {
 }
 
 .error {
-  color: var(--danger);
+  color: #eee;
   font-size: 12px;
-  margin-top: 10px;
+  margin-top: 8px;
+  font-weight: 700;
 }
 
 kbd {
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: Consolas, monospace;
   font-size: 11px;
-  background: #e7e5e4;
-  border-radius: 4px;
-  padding: 1px 4px;
+  background: #222;
+  border: 1px solid #666;
+  border-radius: 0;
+  padding: 0 3px;
 }

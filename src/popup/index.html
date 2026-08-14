@@ -12,67 +12,113 @@
       <p id="adapter-status" class="muted">Адаптер: …</p>
     </header>
 
-    <section class="actions">
-      <button id="btn-create" type="button">Создать группу</button>
-      <button id="btn-add" type="button">Добавить вкладку</button>
-    </section>
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="groups" id="tab-groups">
+        Основное
+      </button>
+      <button type="button" class="tab" data-tab="settings" id="tab-settings">
+        Настройки
+      </button>
+    </nav>
 
-    <section>
+    <section id="panel-groups" class="tab-panel">
+      <section class="actions">
+        <button id="btn-create" type="button">Создать группу</button>
+        <button id="btn-add" type="button">Добавить вкладку</button>
+      </section>
+
       <label class="field">
         <span>Активная группа</span>
         <select id="group-select"></select>
       </label>
-    </section>
 
-    <section id="group-panel" class="hidden">
-      <div class="row">
-        <label class="check">
-          <input type="checkbox" id="sync-enabled" />
-          Синхронизация включена
+      <div id="group-panel" class="hidden">
+        <label class="field">
+          <span>Название группы</span>
+          <div class="row gap grow">
+            <input id="group-name" type="text" maxlength="80" />
+            <button id="btn-rename" type="button" class="secondary">Сохранить</button>
+          </div>
         </label>
+
+        <div class="row gap">
+          <button id="btn-delete-group" type="button" class="danger">Удалить группу</button>
+        </div>
+
+        <div class="row">
+          <label class="check">
+            <input type="checkbox" id="sync-enabled" />
+            Синхронизация включена
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Режим лидера</span>
+          <select id="leader-mode">
+            <option value="active">Активная вкладка</option>
+            <option value="fixed">Фиксированный</option>
+          </select>
+        </label>
+
+        <label class="field" id="fixed-leader-wrap">
+          <span>Фиксированный лидер</span>
+          <select id="fixed-leader"></select>
+        </label>
+
+        <h2>Вкладки</h2>
+        <ul id="tab-list"></ul>
       </div>
 
-      <label class="field">
-        <span>Режим синхронизации</span>
-        <select id="sync-mode">
-          <option value="percent">Процентный</option>
-          <option value="anchor">Якорный</option>
-        </select>
-      </label>
-      <p id="anchor-hint" class="muted hidden">
-        Для якорного режима нужно минимум 2 якоря (до этого используется процентный).
+      <p id="empty" class="muted">
+        Групп пока нет. Откройте две страницы и нажмите
+        <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>, затем добавьте вторую вкладку через
+        <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>.
       </p>
-
-      <div class="row gap">
-        <button id="btn-add-anchor" type="button">Добавить якорь</button>
-        <button id="btn-clear-anchors" type="button" class="secondary">
-          Очистить якоря
-        </button>
-      </div>
-      <p id="anchor-count" class="muted">Якоря: 0</p>
-
-      <label class="field">
-        <span>Режим лидера</span>
-        <select id="leader-mode">
-          <option value="active">Активная вкладка</option>
-          <option value="fixed">Фиксированный</option>
-        </select>
-      </label>
-
-      <label class="field" id="fixed-leader-wrap">
-        <span>Фиксированный лидер</span>
-        <select id="fixed-leader"></select>
-      </label>
-
-      <h2>Вкладки</h2>
-      <ul id="tab-list"></ul>
     </section>
 
-    <p id="empty" class="muted">
-      Групп пока нет. Откройте две страницы и нажмите
-      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>, затем добавьте вторую вкладку через
-      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>.
-    </p>
+    <section id="panel-settings" class="tab-panel hidden">
+      <p id="settings-empty" class="muted">Сначала создайте или выберите группу.</p>
+
+      <div id="settings-panel" class="hidden">
+        <label class="field">
+          <span>Позиция скролла</span>
+          <div class="scroll-control">
+            <input id="scroll-range" type="range" min="-100" max="200" step="1" value="0" />
+            <div class="row gap grow">
+              <input id="scroll-percent" type="number" step="1" value="0" />
+              <span class="unit">%</span>
+              <button id="btn-apply-scroll" type="button">Применить</button>
+            </div>
+          </div>
+          <p class="muted">Можно меньше 0 и больше 100 — дальше сработает масштаб вкладок.</p>
+        </label>
+
+        <label class="field">
+          <span>Режим синхронизации</span>
+          <select id="sync-mode">
+            <option value="percent">Процентный</option>
+            <option value="anchor">Якорный</option>
+          </select>
+        </label>
+        <p id="anchor-hint" class="muted hidden">
+          Для якорного режима нужно минимум 2 якоря (до этого используется процентный).
+        </p>
+
+        <div class="row gap">
+          <button id="btn-add-anchor" type="button">Добавить якорь</button>
+          <button id="btn-clear-anchors" type="button" class="secondary">
+            Очистить якоря
+          </button>
+        </div>
+        <p id="anchor-count" class="muted">Якоря: 0</p>
+
+        <h2>Масштаб вкладок</h2>
+        <p class="muted">
+          100% — как лидер, 50% — вдвое медленнее, −100% — в обратную сторону.
+        </p>
+        <ul id="scale-list"></ul>
+      </div>
+    </section>
 
     <p id="error" class="error hidden"></p>
 

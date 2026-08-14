@@ -13,9 +13,55 @@ import { sendTabMessage } from '../shared/messaging';
 let state: AppState = emptyState();
 let ready: Promise<void> = init();
 
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+function ensureGroupShape(group: Group): Group {
+  if (!group.scrollScales) group.scrollScales = {};
+  if (!group.tabUrls) group.tabUrls = {};
+  if (!group.tabTitles) group.tabTitles = {};
+  if (!group.anchors) group.anchors = [];
+  for (const tabId of group.tabIds) {
+    if (typeof group.scrollScales[tabId] !== 'number') {
+      group.scrollScales[tabId] = 1;
+    }
+  }
+  return group;
+}
+
+function getScale(group: Group, tabId: number): number {
+  const scale = group.scrollScales?.[tabId];
+  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale === 0) {
+    return 1;
+  }
+  return scale;
+}
+
+/** Apply signed scale to logical 0..1 progress. Negative = reverse. */
+function applyScale(logical: number, scale: number): number {
+  if (scale >= 0) return clamp01(logical * scale);
+  return clamp01(1 + logical * scale);
+}
+
+function mapWithScales(
+  progress: number,
+  fromTabId: number,
+  toTabId: number,
+  group: Group,
+): number {
+  const fromScale = getScale(group, fromTabId);
+  const toScale = getScale(group, toTabId);
+  const ratio = toScale / fromScale;
+  return applyScale(progress, ratio);
+}
+
 async function init(): Promise<void> {
   state = await loadState();
+  state.groups = state.groups.map(ensureGroupShape);
   await restoreTabIdsByUrl();
+  state.groups = state.groups.map(ensureGroupShape);
   await persist();
 }
 
@@ -40,6 +86,7 @@ function removeTabFromAllGroups(tabId: number): boolean {
     group.tabIds = group.tabIds.filter((id) => id !== tabId);
     delete group.tabUrls[tabId];
     delete group.tabTitles[tabId];
+    delete group.scrollScales[tabId];
     if (group.fixedLeaderTabId === tabId) {
       group.fixedLeaderTabId = group.tabIds[0];
     }
@@ -85,10 +132,12 @@ async function restoreTabIdsByUrl(): Promise<void> {
   }
 
   for (const group of state.groups) {
+    ensureGroupShape(group);
     const oldIds = [...group.tabIds];
     const newTabIds: number[] = [];
     const newUrls: Record<number, string> = {};
     const newTitles: Record<number, string> = {};
+    const newScales: Record<number, number> = {};
     const idMap = new Map<number, number>();
 
     for (const oldId of oldIds) {
@@ -101,9 +150,9 @@ async function restoreTabIdsByUrl(): Promise<void> {
       newTabIds.push(match.id);
       newUrls[match.id] = url;
       newTitles[match.id] = match.title ?? group.tabTitles[oldId] ?? url;
+      newScales[match.id] = getScale(group, oldId);
     }
 
-    // Remap anchors
     group.anchors = group.anchors.map((anchor) => {
       const points: Record<number, number> = {};
       for (const [oldIdStr, progress] of Object.entries(anchor.points)) {
@@ -126,6 +175,7 @@ async function restoreTabIdsByUrl(): Promise<void> {
     group.tabIds = newTabIds;
     group.tabUrls = newUrls;
     group.tabTitles = newTitles;
+    group.scrollScales = newScales;
   }
 
   state.groups = state.groups.filter((g) => g.tabIds.length > 0);
@@ -137,7 +187,9 @@ async function restoreTabIdsByUrl(): Promise<void> {
   }
 }
 
-async function createGroupFromActiveTab(): Promise<StateMessage | { type: 'ERROR'; error: string }> {
+async function createGroupFromActiveTab(): Promise<
+  StateMessage | { type: 'ERROR'; error: string }
+> {
   const tab = await getActiveTab();
   if (!tab?.id || !isInjectableUrl(tab.url)) {
     return { type: 'ERROR', error: 'На этой странице нельзя создать группу.' };
@@ -151,6 +203,7 @@ async function createGroupFromActiveTab(): Promise<StateMessage | { type: 'ERROR
     tabIds: [tab.id],
     tabUrls: { [tab.id]: tab.url! },
     tabTitles: { [tab.id]: tab.title ?? tab.url! },
+    scrollScales: { [tab.id]: 1 },
     syncEnabled: true,
     syncMode: 'percent',
     leaderMode: 'active',
@@ -182,17 +235,20 @@ async function addActiveTabToGroup(
   }
 
   removeTabFromAllGroups(tab.id);
-  // removeTabFromAllGroups may have deleted empty groups — re-find
   const target = state.groups.find((g) => g.id === group.id);
   if (!target) {
     return { type: 'ERROR', error: 'Группа больше не существует.' };
   }
 
+  ensureGroupShape(target);
   if (!target.tabIds.includes(tab.id)) {
     target.tabIds.push(tab.id);
   }
   target.tabUrls[tab.id] = tab.url!;
   target.tabTitles[tab.id] = tab.title ?? tab.url!;
+  if (typeof target.scrollScales[tab.id] !== 'number') {
+    target.scrollScales[tab.id] = 1;
+  }
   if (target.fixedLeaderTabId === undefined) {
     target.fixedLeaderTabId = tab.id;
   }
@@ -220,14 +276,9 @@ function isLeader(group: Group, tabId: number): boolean {
   if (group.leaderMode === 'fixed') {
     return group.fixedLeaderTabId === tabId;
   }
-  // active mode: any member scrolling becomes leader
   return group.tabIds.includes(tabId);
 }
 
-/**
- * Map leader progress to follower progress using anchors.
- * Anchors are ordered by the leader's progress values.
- */
 function mapProgressViaAnchors(
   group: Group,
   leaderTabId: number,
@@ -274,11 +325,15 @@ function mapProgressViaAnchors(
   return leaderProgress;
 }
 
-async function broadcastScroll(fromTabId: number, progress: number): Promise<void> {
+async function broadcastScroll(
+  fromTabId: number,
+  progress: number,
+): Promise<void> {
   const group = findGroupByTabId(fromTabId);
   if (!group || !group.syncEnabled) return;
   if (!isLeader(group, fromTabId)) return;
 
+  ensureGroupShape(group);
   if (group.leaderMode === 'active') {
     group.activeLeaderTabId = fromTabId;
   }
@@ -290,9 +345,9 @@ async function broadcastScroll(fromTabId: number, progress: number): Promise<voi
     group.tabIds
       .filter((id) => id !== fromTabId)
       .map(async (tabId) => {
-        const mapped = useAnchors
+        let mapped = useAnchors
           ? mapProgressViaAnchors(group, fromTabId, tabId, progress)
-          : progress;
+          : mapWithScales(progress, fromTabId, tabId, group);
         await sendTabMessage(tabId, {
           type: 'APPLY_SCROLL',
           progress: mapped,
@@ -334,6 +389,103 @@ async function addAnchor(
     points,
   });
   await persist();
+  return { type: 'STATE', state };
+}
+
+function renameGroup(
+  groupId: string,
+  name: string,
+): StateMessage | { type: 'ERROR'; error: string } {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) {
+    return { type: 'ERROR', error: 'Группа не найдена.' };
+  }
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { type: 'ERROR', error: 'Название группы не может быть пустым.' };
+  }
+  group.name = trimmed.slice(0, 80);
+  return { type: 'STATE', state };
+}
+
+function deleteGroup(
+  groupId: string,
+): StateMessage | { type: 'ERROR'; error: string } {
+  const exists = state.groups.some((g) => g.id === groupId);
+  if (!exists) {
+    return { type: 'ERROR', error: 'Группа не найдена.' };
+  }
+  state.groups = state.groups.filter((g) => g.id !== groupId);
+  if (state.activeGroupId === groupId) {
+    state.activeGroupId = state.groups[0]?.id;
+  }
+  return { type: 'STATE', state };
+}
+
+async function setScrollPercent(
+  groupId: string,
+  percent: number,
+): Promise<StateMessage | { type: 'ERROR'; error: string }> {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) {
+    return { type: 'ERROR', error: 'Группа не найдена.' };
+  }
+  if (!Number.isFinite(percent)) {
+    return { type: 'ERROR', error: 'Некорректный процент.' };
+  }
+  ensureGroupShape(group);
+  const logical = percent / 100;
+  const useAnchors =
+    group.syncMode === 'anchor' && group.anchors.length >= 2;
+  const leaderTabId =
+    group.leaderMode === 'fixed'
+      ? group.fixedLeaderTabId
+      : group.activeLeaderTabId ?? group.tabIds[0];
+
+  await Promise.all(
+    group.tabIds.map(async (tabId) => {
+      let mapped: number;
+      if (
+        useAnchors &&
+        typeof leaderTabId === 'number' &&
+        tabId !== leaderTabId
+      ) {
+        mapped = mapProgressViaAnchors(group, leaderTabId, tabId, logical);
+      } else if (typeof leaderTabId === 'number') {
+        mapped = mapWithScales(logical, leaderTabId, tabId, group);
+      } else {
+        mapped = applyScale(logical, getScale(group, tabId));
+      }
+      await sendTabMessage(tabId, {
+        type: 'APPLY_SCROLL',
+        progress: mapped,
+      });
+    }),
+  );
+
+  return { type: 'STATE', state };
+}
+
+function setTabScrollScale(
+  groupId: string,
+  tabId: number,
+  scale: number,
+): StateMessage | { type: 'ERROR'; error: string } {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) {
+    return { type: 'ERROR', error: 'Группа не найдена.' };
+  }
+  if (!group.tabIds.includes(tabId)) {
+    return { type: 'ERROR', error: 'Вкладка не входит в группу.' };
+  }
+  if (!Number.isFinite(scale) || scale === 0) {
+    return {
+      type: 'ERROR',
+      error: 'Масштаб должен быть числом ≠ 0 (можно отрицательным).',
+    };
+  }
+  ensureGroupShape(group);
+  group.scrollScales[tabId] = Math.max(-10, Math.min(10, scale));
   return { type: 'STATE', state };
 }
 
@@ -423,7 +575,6 @@ chrome.runtime.onMessage.addListener(
               break;
             }
             removeTabFromAllGroups(message.tabId);
-            // If tab was only removed from that group path via helper — done
             await persist();
             sendResponse(stateResponse());
             break;
@@ -437,6 +588,37 @@ chrome.runtime.onMessage.addListener(
             state.activeGroupId = message.groupId;
             await persist();
             sendResponse(stateResponse());
+            break;
+          }
+
+          case 'RENAME_GROUP': {
+            const result = renameGroup(message.groupId, message.name);
+            if (result.type === 'STATE') await persist();
+            sendResponse(result);
+            break;
+          }
+
+          case 'DELETE_GROUP': {
+            const result = deleteGroup(message.groupId);
+            if (result.type === 'STATE') await persist();
+            sendResponse(result);
+            break;
+          }
+
+          case 'SET_SCROLL_PERCENT':
+            sendResponse(
+              await setScrollPercent(message.groupId, message.percent),
+            );
+            break;
+
+          case 'SET_TAB_SCROLL_SCALE': {
+            const result = setTabScrollScale(
+              message.groupId,
+              message.tabId,
+              message.scale,
+            );
+            if (result.type === 'STATE') await persist();
+            sendResponse(result);
             break;
           }
 
