@@ -2,20 +2,43 @@
 
 Инструмент для переводчиков: несколько вкладок (оригинал, черновик, публикация и т.п.) работают как одна рабочая поверхность. Без сервера и аккаунтов - всё локально в браузере (Chrome / Edge, Manifest V3).
 
+## Оглавление
+
+- [Установка распакованного расширения](#установка-распакованного-расширения)
+  - [Edge](#edge)
+  - [Chrome](#chrome)
+- [Интерфейс расширения](#интерфейс-расширения)
+  - [Основное](#основное)
+  - [Настройки](#настройки)
+- [Настройка](#настройка)
+  - [Горячие клавиши](#горячие-клавиши)
+  - [Режимы синхронизации](#режимы-синхронизации)
+  - [Режимы лидера](#режимы-лидера)
+
 ## Установка распакованного расширения
 ### Edge
 1. Откройте `edge://extensions`
 2. Включите **Режим разработчика**
-![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Режим разработчика edge")
+![alt text](https://github.com/d404mer/Scroll-Sync-MVP/blob/main/docs/img/Edge%20Developer.png?raw=true "Режим разработчика edge")
 3. **Загрузить распакованное расширение** → распакованная папка расширения
-![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Загрузить расширение edge")
+![alt text](https://github.com/d404mer/Scroll-Sync-MVP/blob/main/docs/img/Chrome%20load%20upacked.png?raw=true "Загрузить расширение edge")
 
 ### Chrome
-1. Откройте `chrome://extensions` 
+1. Откройте `chrome://extensions`
 2. Включите **Режим разработчика**
-![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Режим разработчика chrome")
+![alt text](https://github.com/d404mer/Scroll-Sync-MVP/blob/main/docs/img/Chrome%20developer.png?raw=true "Режим разработчика chrome")
 3. **Загрузить распакованное расширение** → распакованная папка расширения
-![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Загрузить расширение chrome")
+![alt text](https://github.com/d404mer/Scroll-Sync-MVP/blob/main/docs/img/Edge%20load%20unpacked.png?raw=true "Загрузить расширение chrome")
+
+## Интерфейс расширения
+
+В popup две вкладки:
+
+### Основное
+Работа с группами: создать / добавить вкладку, выбрать активную группу, переименовать или удалить, вкл/выкл синхронизацию, **режим лидера**, список вкладок в группе.
+
+### Настройки
+Тонкая настройка активной группы: **позиция скролла**, режим синхронизации (процентный / якорный) и якоря, **масштаб** каждой вкладки (например `50%` — медленнее, `−100%` — в обратную сторону).
 
 ## Настройка
 
