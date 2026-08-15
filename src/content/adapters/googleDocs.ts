@@ -17,6 +17,7 @@ const DOCS_SELECTORS = [
   '.docs-texteventtarget-iframe',
 ];
 
+// todo: docs часто меняет вёрстку - селекторы периодически отваливаются
 function findDocsScrollContainer(): HTMLElement | null {
   const direct = pickScrollContainer(
     DOCS_SELECTORS.map((sel) => document.querySelector(sel)),

@@ -42,7 +42,7 @@ function getScale(group: Group, tabId: number): number {
   return scale;
 }
 
-/** Apply signed scale to logical 0..1 progress. Negative = reverse. */
+/** scale может быть отрицательным - тогда крутим «наоборот» */
 function applyScale(logical: number, scale: number): number {
   if (scale >= 0) return clamp01(logical * scale);
   return clamp01(1 + logical * scale);
@@ -76,13 +76,13 @@ async function boot(injectScripts: boolean): Promise<void> {
   await restoreTabBindings();
   state.groups = state.groups.map(ensureGroupShape);
   await persist();
-  // Never block message handling on injection — some tabs hang executeScript
+  // инъекцию не ждём: на части вкладок executeScript просто зависает
   if (injectScripts) {
     void injectContentScriptsIntoOpenTabs();
   }
 }
 
-/** Serialize boots so a later init cannot overwrite fresher in-memory state mid-flight. */
+/** boot'ы в очередь, чтобы один init не затёр свежий state другим */
 function scheduleBoot(injectScripts: boolean): Promise<void> {
   ready = ready.catch(() => undefined).then(() => boot(injectScripts));
   return ready;
@@ -120,7 +120,7 @@ function removeTabFromAllGroups(tabId: number): boolean {
       delete anchor.points[tabId];
     }
   }
-  // Only drop groups that lost all members after a real tab close
+  // группу выкидываем только когда реально закрыли последнюю вкладку
   state.groups = state.groups.filter((g) => g.tabIds.length > 0);
   if (
     state.activeGroupId &&
@@ -154,9 +154,8 @@ async function tabStillExists(tabId: number): Promise<chrome.tabs.Tab | null> {
 }
 
 /**
- * Prefer live tabIds (SW sleep does not change them). Remap only dead ids by URL.
- * Never delete groups here — failed rematch keeps orphaned entries until URL reappears
- * or the user removes them.
+ * сначала цепляемся за живые tabId (после сна sw они те же),
+ * мёртвые пробуем найти по url. группы тут не трогаем - пусть лучше сирота, чем пропажа
  */
 async function restoreTabBindings(): Promise<void> {
   const tabs = await chrome.tabs.query({});
@@ -210,7 +209,7 @@ async function restoreTabBindings(): Promise<void> {
         ?.find((t) => t.id && !claimed.has(t.id) && !newTabIds.includes(t.id));
       const match = exact ?? loose;
       if (!match?.id) {
-        // Keep orphan slot so the group (and URL) survive until rematch
+        // url сохраняем даже без живой вкладки - потом может снова открыться
         if (!newTabIds.includes(oldId)) {
           idMap.set(oldId, oldId);
           newTabIds.push(oldId);
@@ -264,7 +263,7 @@ async function restoreTabBindings(): Promise<void> {
     group.scrollScales = newScales;
   }
 
-  // Do NOT delete groups with zero live matches — keep orphans with saved URLs
+  // не чистим группы без матча - сироты с url оставляем
   if (
     state.activeGroupId &&
     !state.groups.some((g) => g.id === state.activeGroupId)
@@ -293,7 +292,7 @@ async function injectContentScriptsIntoOpenTabs(): Promise<void> {
           }),
         ]);
       } catch {
-        // Restricted pages / already injected / no host access
+        // chrome://, уже вставлено, нет доступа - просто пропускаем
       }
     }),
   );
@@ -386,6 +385,7 @@ async function snapshotGroupIntoSession(
 function scheduleAutosave(): void {
   if (!state.activeSessionId) return;
   if (autosaveTimer) return;
+  // todo: при закрытии popup черновик за 2с может не успеть записаться
   autosaveTimer = setTimeout(() => {
     autosaveTimer = 0;
     void (async () => {
@@ -476,14 +476,14 @@ async function openSession(
       const tab = await chrome.tabs.create({ url: member.url, active: false });
       opened.push({ tab, member });
     } catch {
-      // skip bad urls
+      // кривой url - пропускаем
     }
   }
   if (opened.length === 0) {
     return { type: 'ERROR', error: 'Не удалось открыть вкладки сессии.' };
   }
 
-  // Wait briefly for content scripts
+  // todo: вместо фиксированной паузы ждать готовности content script
   await new Promise((r) => setTimeout(r, 800));
 
   const tabIds: number[] = [];
@@ -878,7 +878,7 @@ async function refreshTabMeta(tabId: number): Promise<void> {
     if (tab.title) group.tabTitles[tabId] = tab.title;
     await persist();
   } catch {
-    // tab may be gone
+    // вкладку уже закрыли - ок
   }
 }
 

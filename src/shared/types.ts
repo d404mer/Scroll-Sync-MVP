@@ -10,8 +10,7 @@ export interface TabRef {
 
 export interface Anchor {
   id: string;
-  /** Progress 0..1 keyed by tabId at the time the anchor was created.
-   * After restore, remapped via tabUrls. */
+  /** 0..1 на момент постановки якоря, ключ - tabId; после рестарта перекладываем через url */
   points: Record<number, number>;
 }
 
@@ -19,20 +18,19 @@ export interface Group {
   id: string;
   name: string;
   tabIds: number[];
-  /** URL snapshot for restore after browser restart */
+  /** url вкладок, чтобы после рестарта браузера снова найти их */
   tabUrls: Record<number, string>;
-  /** Title snapshot for UI */
+  /** заголовки для списка в popup */
   tabTitles: Record<number, string>;
   /**
-   * Scroll speed scale per tab (1 = 100%).
-   * 0.5 = twice as slow, 2 = twice as fast, -1 = inverted.
+   * масштаб скорости по вкладке: 1 = как лидер, 0.5 медленнее, -1 наоборот
    */
   scrollScales: Record<number, number>;
   syncEnabled: boolean;
   syncMode: SyncMode;
   leaderMode: LeaderMode;
   fixedLeaderTabId?: number;
-  /** Last known active leader when leaderMode === 'active' */
+  /** кто последний крутил, если режим «активная вкладка» */
   activeLeaderTabId?: number;
   anchors: Anchor[];
 }
@@ -64,6 +62,7 @@ export interface AppState {
   groups: Group[];
   activeGroupId?: string;
   sessions: Session[];
+  /** куда пишет автосохранение; без явного «сохранить» сессию сами не плодим */
   activeSessionId?: string;
 }
 
@@ -153,7 +152,7 @@ export interface SetActiveGroupMessage extends BaseMessage {
 export interface SetScrollPercentMessage extends BaseMessage {
   type: 'SET_SCROLL_PERCENT';
   groupId: string;
-  /** Logical percent; may be negative or >100, then scaled per tab */
+  /** можно уходить за 0..100 - дальше режет clamp и масштаб вкладок */
   percent: number;
 }
 
@@ -161,7 +160,7 @@ export interface SetTabScrollScaleMessage extends BaseMessage {
   type: 'SET_TAB_SCROLL_SCALE';
   groupId: string;
   tabId: number;
-  /** Multiplier: 1 = 100%, 0.5 = slower, -1 = inverted */
+  /** 1 = 100%, 0.5 медленнее, отрицательное - зеркалим направление */
   scale: number;
 }
 

@@ -362,9 +362,8 @@ async function loadAdapterStatus(): Promise<void> {
   }
   const { status } = res;
   const mark = status.ok ? 'ок' : 'ограничен';
-  adapterStatusEl.textContent = `Адаптер: ${status.label} (${mark})${
-    status.detail ? ` — ${status.detail}` : ''
-  }`;
+  adapterStatusEl.textContent = `Адаптер: ${status.label} (${mark})${status.detail ? ` - ${status.detail}` : ''
+    }`;
 }
 
 async function applyScrollPercent(): Promise<void> {
