@@ -37,9 +37,34 @@ export interface Group {
   anchors: Anchor[];
 }
 
+export interface SessionMember {
+  url: string;
+  title: string;
+  scrollProgress: number;
+  scrollScale: number;
+}
+
+export interface SessionAnchor {
+  id: string;
+  pointsByUrl: Record<string, number>;
+}
+
+export interface Session {
+  id: string;
+  name: string;
+  updatedAt: number;
+  members: SessionMember[];
+  syncMode: SyncMode;
+  leaderMode: LeaderMode;
+  syncEnabled: boolean;
+  anchors: SessionAnchor[];
+}
+
 export interface AppState {
   groups: Group[];
   activeGroupId?: string;
+  sessions: Session[];
+  activeSessionId?: string;
 }
 
 export interface AdapterStatus {
@@ -66,6 +91,11 @@ export type MessageType =
   | 'CLEAR_ANCHORS'
   | 'SET_SCROLL_PERCENT'
   | 'SET_TAB_SCROLL_SCALE'
+  | 'SAVE_SESSION'
+  | 'UPDATE_SESSION'
+  | 'OPEN_SESSION'
+  | 'DELETE_SESSION'
+  | 'SET_ACTIVE_SESSION'
   | 'SCROLL_UPDATE'
   | 'SCROLL_PROGRESS'
   | 'APPLY_SCROLL'
@@ -169,6 +199,32 @@ export interface ClearAnchorsMessage extends BaseMessage {
   groupId: string;
 }
 
+export interface SaveSessionMessage extends BaseMessage {
+  type: 'SAVE_SESSION';
+  name?: string;
+}
+
+export interface UpdateSessionMessage extends BaseMessage {
+  type: 'UPDATE_SESSION';
+  sessionId: string;
+  name?: string;
+}
+
+export interface OpenSessionMessage extends BaseMessage {
+  type: 'OPEN_SESSION';
+  sessionId: string;
+}
+
+export interface DeleteSessionMessage extends BaseMessage {
+  type: 'DELETE_SESSION';
+  sessionId: string;
+}
+
+export interface SetActiveSessionMessage extends BaseMessage {
+  type: 'SET_ACTIVE_SESSION';
+  sessionId: string;
+}
+
 export interface ScrollUpdateMessage extends BaseMessage {
   type: 'SCROLL_UPDATE';
   deltaPx: number;
@@ -230,6 +286,11 @@ export type ExtensionMessage =
   | ClearAnchorsMessage
   | SetScrollPercentMessage
   | SetTabScrollScaleMessage
+  | SaveSessionMessage
+  | UpdateSessionMessage
+  | OpenSessionMessage
+  | DeleteSessionMessage
+  | SetActiveSessionMessage
   | ScrollUpdateMessage
   | ScrollProgressMessage
   | ApplyScrollMessage
@@ -243,7 +304,7 @@ export type ExtensionMessage =
 export const STORAGE_KEY = 'scrollSyncState';
 
 export function emptyState(): AppState {
-  return { groups: [] };
+  return { groups: [], sessions: [] };
 }
 
 export function createId(prefix: string): string {

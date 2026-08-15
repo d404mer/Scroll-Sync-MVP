@@ -6,6 +6,7 @@ import type {
   ExtensionMessage,
   Group,
   ProgressMessage,
+  Session,
   StateMessage,
 } from '../shared/types';
 
@@ -22,6 +23,9 @@ const fixedLeader = document.getElementById('fixed-leader') as HTMLSelectElement
 const fixedLeaderWrap = document.getElementById('fixed-leader-wrap') as HTMLElement;
 const tabList = document.getElementById('tab-list') as HTMLUListElement;
 const scaleList = document.getElementById('scale-list') as HTMLUListElement;
+const sessionList = document.getElementById('session-list') as HTMLUListElement;
+const sessionsEmpty = document.getElementById('sessions-empty') as HTMLElement;
+const sessionNameInput = document.getElementById('session-name') as HTMLInputElement;
 const anchorCount = document.getElementById('anchor-count') as HTMLElement;
 const anchorHint = document.getElementById('anchor-hint') as HTMLElement;
 const scrollRange = document.getElementById('scroll-range') as HTMLInputElement;
@@ -29,11 +33,13 @@ const scrollPercent = document.getElementById('scroll-percent') as HTMLInputElem
 const settingsPanel = document.getElementById('settings-panel') as HTMLElement;
 const settingsEmpty = document.getElementById('settings-empty') as HTMLElement;
 const panelGroups = document.getElementById('panel-groups') as HTMLElement;
+const panelSessions = document.getElementById('panel-sessions') as HTMLElement;
 const panelSettings = document.getElementById('panel-settings') as HTMLElement;
 const tabGroupsBtn = document.getElementById('tab-groups') as HTMLButtonElement;
+const tabSessionsBtn = document.getElementById('tab-sessions') as HTMLButtonElement;
 const tabSettingsBtn = document.getElementById('tab-settings') as HTMLButtonElement;
 
-let state: AppState = { groups: [] };
+let state: AppState = { groups: [], sessions: [] };
 let rendering = false;
 
 function showError(message: string | null): void {
@@ -63,6 +69,7 @@ async function call(message: ExtensionMessage): Promise<void> {
   if (isState(res)) {
     showError(null);
     state = res.state;
+    if (!state.sessions) state.sessions = [];
     render();
     void refreshScrollPercent();
   }
@@ -70,6 +77,10 @@ async function call(message: ExtensionMessage): Promise<void> {
 
 function activeGroup(): Group | undefined {
   return state.groups.find((g) => g.id === state.activeGroupId);
+}
+
+function activeSession(): Session | undefined {
+  return state.sessions.find((s) => s.id === state.activeSessionId);
 }
 
 function tabScalePercent(group: Group, tabId: number): number {
@@ -104,12 +115,26 @@ async function refreshScrollPercent(): Promise<void> {
   }
 }
 
-function switchTab(tab: 'groups' | 'settings'): void {
-  const isGroups = tab === 'groups';
-  tabGroupsBtn.classList.toggle('active', isGroups);
-  tabSettingsBtn.classList.toggle('active', !isGroups);
-  panelGroups.classList.toggle('hidden', !isGroups);
-  panelSettings.classList.toggle('hidden', isGroups);
+function switchTab(tab: 'groups' | 'sessions' | 'settings'): void {
+  tabGroupsBtn.classList.toggle('active', tab === 'groups');
+  tabSessionsBtn.classList.toggle('active', tab === 'sessions');
+  tabSettingsBtn.classList.toggle('active', tab === 'settings');
+  panelGroups.classList.toggle('hidden', tab !== 'groups');
+  panelSessions.classList.toggle('hidden', tab !== 'sessions');
+  panelSettings.classList.toggle('hidden', tab !== 'settings');
+}
+
+function formatSessionDate(ts: number): string {
+  try {
+    return new Date(ts).toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
 }
 
 function renderTabList(group: Group): void {
@@ -168,7 +193,7 @@ function renderScaleList(group: Group): void {
     save.type = 'button';
     save.className = 'secondary';
     save.textContent = 'OK';
-    save.addEventListener('click', () => {
+    const apply = () => {
       const percent = Number(input.value);
       void call({
         type: 'SET_TAB_SCROLL_SCALE',
@@ -176,22 +201,84 @@ function renderScaleList(group: Group): void {
         tabId,
         scale: percent / 100,
       });
-    });
+    };
+    save.addEventListener('click', apply);
     input.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      const percent = Number(input.value);
-      void call({
-        type: 'SET_TAB_SCROLL_SCALE',
-        groupId: group.id,
-        tabId,
-        scale: percent / 100,
-      });
+      if (event.key === 'Enter') apply();
     });
     row.append(input, unit, save);
-
     meta.append(title, url, row);
     li.append(meta);
     scaleList.appendChild(li);
+  }
+}
+
+function renderSessionList(): void {
+  sessionList.innerHTML = '';
+  const sessions = state.sessions ?? [];
+  sessionsEmpty.classList.toggle('hidden', sessions.length > 0);
+
+  const sorted = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+  for (const session of sorted) {
+    const li = document.createElement('li');
+    if (session.id === state.activeSessionId) {
+      li.classList.add('active-session');
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = session.name;
+    const line = document.createElement('div');
+    line.className = 'meta-line';
+    line.textContent = `${session.members.length} стр. · ${formatSessionDate(session.updatedAt)}`;
+    meta.append(title, line);
+
+    const actions = document.createElement('div');
+    actions.className = 'actions-col';
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.textContent = 'Открыть';
+    openBtn.addEventListener('click', () => {
+      void call({ type: 'OPEN_SESSION', sessionId: session.id });
+    });
+
+    const selectBtn = document.createElement('button');
+    selectBtn.type = 'button';
+    selectBtn.className = 'secondary';
+    selectBtn.textContent = 'Активная';
+    selectBtn.addEventListener('click', () => {
+      sessionNameInput.value = session.name;
+      void call({ type: 'SET_ACTIVE_SESSION', sessionId: session.id });
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'danger';
+    delBtn.textContent = 'Удал.';
+    let armed = false;
+    let armTimer = 0;
+    delBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!armed) {
+        armed = true;
+        delBtn.textContent = 'Точно?';
+        armTimer = window.setTimeout(() => {
+          armed = false;
+          delBtn.textContent = 'Удал.';
+        }, 2500);
+        return;
+      }
+      window.clearTimeout(armTimer);
+      void call({ type: 'DELETE_SESSION', sessionId: session.id });
+    });
+
+    actions.append(openBtn, selectBtn, delBtn);
+    li.append(meta, actions);
+    sessionList.appendChild(li);
   }
 }
 
@@ -199,6 +286,13 @@ function render(): void {
   rendering = true;
   const groups = state.groups;
   const group = activeGroup();
+  const session = activeSession();
+
+  if (session && !sessionNameInput.value) {
+    sessionNameInput.value = session.name;
+  } else if (session && document.activeElement !== sessionNameInput) {
+    sessionNameInput.placeholder = session.name;
+  }
 
   groupSelect.innerHTML = '';
   for (const g of groups) {
@@ -216,41 +310,40 @@ function render(): void {
     emptyEl.classList.remove('hidden');
     settingsPanel.classList.add('hidden');
     settingsEmpty.classList.remove('hidden');
-    rendering = false;
-    return;
+  } else {
+    emptyEl.classList.add('hidden');
+    groupPanel.classList.remove('hidden');
+    settingsEmpty.classList.add('hidden');
+    settingsPanel.classList.remove('hidden');
+
+    groupNameInput.value = group.name;
+    syncEnabled.checked = group.syncEnabled;
+    syncMode.value = group.syncMode;
+    leaderMode.value = group.leaderMode;
+
+    const showFixed = group.leaderMode === 'fixed';
+    fixedLeaderWrap.classList.toggle('hidden', !showFixed);
+
+    fixedLeader.innerHTML = '';
+    for (const tabId of group.tabIds) {
+      const opt = document.createElement('option');
+      opt.value = String(tabId);
+      opt.textContent = group.tabTitles[tabId] ?? `Вкладка ${tabId}`;
+      fixedLeader.appendChild(opt);
+    }
+    if (group.fixedLeaderTabId !== undefined) {
+      fixedLeader.value = String(group.fixedLeaderTabId);
+    }
+
+    anchorCount.textContent = `Якоря: ${group.anchors.length}`;
+    const needHint = group.syncMode === 'anchor' && group.anchors.length < 2;
+    anchorHint.classList.toggle('hidden', !needHint);
+
+    renderTabList(group);
+    renderScaleList(group);
   }
 
-  emptyEl.classList.add('hidden');
-  groupPanel.classList.remove('hidden');
-  settingsEmpty.classList.add('hidden');
-  settingsPanel.classList.remove('hidden');
-
-  groupNameInput.value = group.name;
-  syncEnabled.checked = group.syncEnabled;
-  syncMode.value = group.syncMode;
-  leaderMode.value = group.leaderMode;
-
-  const showFixed = group.leaderMode === 'fixed';
-  fixedLeaderWrap.classList.toggle('hidden', !showFixed);
-
-  fixedLeader.innerHTML = '';
-  for (const tabId of group.tabIds) {
-    const opt = document.createElement('option');
-    opt.value = String(tabId);
-    opt.textContent = group.tabTitles[tabId] ?? `Вкладка ${tabId}`;
-    fixedLeader.appendChild(opt);
-  }
-  if (group.fixedLeaderTabId !== undefined) {
-    fixedLeader.value = String(group.fixedLeaderTabId);
-  }
-
-  anchorCount.textContent = `Якоря: ${group.anchors.length}`;
-  const needHint = group.syncMode === 'anchor' && group.anchors.length < 2;
-  anchorHint.classList.toggle('hidden', !needHint);
-
-  renderTabList(group);
-  renderScaleList(group);
-
+  renderSessionList();
   rendering = false;
 }
 
@@ -286,6 +379,7 @@ async function applyScrollPercent(): Promise<void> {
 }
 
 tabGroupsBtn.addEventListener('click', () => switchTab('groups'));
+tabSessionsBtn.addEventListener('click', () => switchTab('sessions'));
 tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
 
 document.getElementById('btn-create')!.addEventListener('click', () => {
@@ -317,12 +411,45 @@ groupNameInput.addEventListener('keydown', (event) => {
   });
 });
 
+let deleteGroupArmed = false;
+let deleteGroupTimer = 0;
 document.getElementById('btn-delete-group')!.addEventListener('click', () => {
   const group = activeGroup();
   if (!group) return;
-  const ok = window.confirm(`Удалить группу «${group.name}»?`);
-  if (!ok) return;
+  const btn = document.getElementById('btn-delete-group') as HTMLButtonElement;
+  if (!deleteGroupArmed) {
+    deleteGroupArmed = true;
+    btn.textContent = 'Точно удалить?';
+    deleteGroupTimer = window.setTimeout(() => {
+      deleteGroupArmed = false;
+      btn.textContent = 'Удалить';
+    }, 2500);
+    return;
+  }
+  window.clearTimeout(deleteGroupTimer);
+  deleteGroupArmed = false;
+  btn.textContent = 'Удалить';
   void call({ type: 'DELETE_GROUP', groupId: group.id });
+});
+
+document.getElementById('btn-save-session')!.addEventListener('click', () => {
+  void call({
+    type: 'SAVE_SESSION',
+    name: sessionNameInput.value || undefined,
+  });
+});
+
+document.getElementById('btn-update-session')!.addEventListener('click', () => {
+  const session = activeSession();
+  if (!session) {
+    showError('Нет активной сессии. Сохраните новую или выберите «Активная».');
+    return;
+  }
+  void call({
+    type: 'UPDATE_SESSION',
+    sessionId: session.id,
+    name: sessionNameInput.value || undefined,
+  });
 });
 
 groupSelect.addEventListener('change', () => {

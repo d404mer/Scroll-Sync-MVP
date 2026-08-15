@@ -16,6 +16,9 @@
       <button type="button" class="tab active" data-tab="groups" id="tab-groups">
         Основное
       </button>
+      <button type="button" class="tab" data-tab="sessions" id="tab-sessions">
+        Сессии
+      </button>
       <button type="button" class="tab" data-tab="settings" id="tab-settings">
         Настройки
       </button>
@@ -34,26 +37,23 @@
 
       <div id="group-panel" class="hidden">
         <label class="field">
-          <span>Название группы</span>
+          <span>Название</span>
           <div class="row gap grow">
             <input id="group-name" type="text" maxlength="80" />
-            <button id="btn-rename" type="button" class="secondary">Сохранить</button>
+            <button id="btn-rename" type="button" class="secondary">OK</button>
           </div>
         </label>
 
-        <div class="row gap">
-          <button id="btn-delete-group" type="button" class="danger">Удалить группу</button>
-        </div>
-
-        <div class="row">
+        <div class="toolbar">
           <label class="check">
             <input type="checkbox" id="sync-enabled" />
-            Синхронизация включена
+            Sync
           </label>
+          <button id="btn-delete-group" type="button" class="danger">Удалить</button>
         </div>
 
         <label class="field">
-          <span>Режим лидера</span>
+          <span>Лидер</span>
           <select id="leader-mode">
             <option value="active">Активная вкладка</option>
             <option value="fixed">Фиксированный</option>
@@ -65,15 +65,31 @@
           <select id="fixed-leader"></select>
         </label>
 
-        <h2>Вкладки</h2>
+        <div class="section-label">Вкладки</div>
         <ul id="tab-list"></ul>
       </div>
 
       <p id="empty" class="muted">
-        Групп пока нет. Откройте две страницы и нажмите
-        <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>, затем добавьте вторую вкладку через
-        <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>.
+        Нет групп. <kbd>Alt+Shift+G</kbd> — создать, <kbd>Alt+Shift+A</kbd> — добавить вкладку.
       </p>
+    </section>
+
+    <section id="panel-sessions" class="tab-panel hidden">
+      <label class="field">
+        <span>Имя новой / обновляемой сессии</span>
+        <input id="session-name" type="text" maxlength="80" placeholder="Напр. MW3 Chapter 12" />
+      </label>
+
+      <section class="actions">
+        <button id="btn-save-session" type="button">Сохранить текущую</button>
+        <button id="btn-update-session" type="button" class="secondary">Обновить активную</button>
+      </section>
+
+      <p class="muted">Автосохранение пишет в активную сессию при скролле и правках группы.</p>
+
+      <div class="section-label">Сохранённые</div>
+      <p id="sessions-empty" class="muted">Сессий пока нет.</p>
+      <ul id="session-list"></ul>
     </section>
 
     <section id="panel-settings" class="tab-panel hidden">
@@ -81,7 +97,7 @@
 
       <div id="settings-panel" class="hidden">
         <label class="field">
-          <span>Позиция скролла</span>
+          <span>Позиция скролла %</span>
           <div class="scroll-control">
             <input id="scroll-range" type="range" min="-100" max="200" step="1" value="0" />
             <div class="row gap grow">
@@ -90,36 +106,27 @@
               <button id="btn-apply-scroll" type="button">Применить</button>
             </div>
           </div>
-          <p class="muted">Можно меньше 0 и больше 100 — дальше сработает масштаб вкладок.</p>
         </label>
 
         <label class="field">
-          <span>Режим синхронизации</span>
+          <span>Режим sync</span>
           <select id="sync-mode">
             <option value="pixel">Пиксельный</option>
             <option value="percent">Процентный</option>
             <option value="anchor">Якорный</option>
           </select>
         </label>
-        <p class="muted">
-          Пиксельный — одинаковый сдвиг в px (по умолчанию). Процентный — одинаковая доля страницы.
-        </p>
-        <p id="anchor-hint" class="muted hidden">
-          Для якорного режима нужно минимум 2 якоря (до этого используется процентный).
-        </p>
+        <p class="muted">Пиксельный = одинаковый сдвиг px. Процентный = доля страницы.</p>
+        <p id="anchor-hint" class="muted hidden">Нужно ≥2 якоря (иначе процентный).</p>
 
         <div class="row gap">
-          <button id="btn-add-anchor" type="button">Добавить якорь</button>
-          <button id="btn-clear-anchors" type="button" class="secondary">
-            Очистить якоря
-          </button>
+          <button id="btn-add-anchor" type="button">Якорь</button>
+          <button id="btn-clear-anchors" type="button" class="secondary">Сброс якорей</button>
         </div>
         <p id="anchor-count" class="muted">Якоря: 0</p>
 
-        <h2>Масштаб вкладок</h2>
-        <p class="muted">
-          100% — как лидер, 50% — вдвое медленнее, −100% — в обратную сторону.
-        </p>
+        <div class="section-label">Масштаб вкладок</div>
+        <p class="muted">100% = 1:1, 50% медленнее, −100% наоборот.</p>
         <ul id="scale-list"></ul>
       </div>
     </section>

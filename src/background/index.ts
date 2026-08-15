@@ -5,6 +5,8 @@ import type {
   ExtensionMessage,
   Group,
   ProgressMessage,
+  Session,
+  SessionMember,
   StateMessage,
 } from '../shared/types';
 import { createId, emptyState } from '../shared/types';
@@ -12,6 +14,7 @@ import { sendTabMessage } from '../shared/messaging';
 
 let state: AppState = emptyState();
 let ready: Promise<void> = Promise.resolve();
+let autosaveTimer = 0;
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -68,6 +71,7 @@ function urlKey(url: string): string {
 
 async function boot(injectScripts: boolean): Promise<void> {
   state = await loadState();
+  if (!Array.isArray(state.sessions)) state.sessions = [];
   state.groups = state.groups.map(ensureGroupShape);
   await restoreTabBindings();
   state.groups = state.groups.map(ensureGroupShape);
@@ -297,6 +301,254 @@ async function injectContentScriptsIntoOpenTabs(): Promise<void> {
 
 ready = scheduleBoot(true);
 
+async function collectProgressMap(
+  tabIds: number[],
+): Promise<Record<number, number>> {
+  const points: Record<number, number> = {};
+  await Promise.all(
+    tabIds.map(async (tabId) => {
+      const res = await sendTabMessage<ProgressMessage>(tabId, {
+        type: 'GET_PROGRESS',
+      });
+      if (res?.type === 'PROGRESS') {
+        points[tabId] = res.progress;
+      }
+    }),
+  );
+  return points;
+}
+
+async function buildSessionMembers(group: Group): Promise<SessionMember[]> {
+  const progress = await collectProgressMap(group.tabIds);
+  const members: SessionMember[] = [];
+  for (const tabId of group.tabIds) {
+    const url = group.tabUrls[tabId];
+    if (!url) continue;
+    members.push({
+      url,
+      title: group.tabTitles[tabId] ?? url,
+      scrollProgress: progress[tabId] ?? 0,
+      scrollScale: getScale(group, tabId),
+    });
+  }
+  return members;
+}
+
+function anchorsFromGroup(group: Group): Session['anchors'] {
+  return group.anchors.map((anchor) => {
+    const pointsByUrl: Record<string, number> = {};
+    for (const [tabIdStr, value] of Object.entries(anchor.points)) {
+      const url = group.tabUrls[Number(tabIdStr)];
+      if (url) pointsByUrl[url] = value;
+    }
+    return { id: anchor.id, pointsByUrl };
+  });
+}
+
+function anchorsToGroup(
+  sessionAnchors: Session['anchors'],
+  tabIds: number[],
+  tabUrls: Record<number, string>,
+): Group['anchors'] {
+  const urlToTab = new Map<string, number>();
+  for (const tabId of tabIds) {
+    const url = tabUrls[tabId];
+    if (url) urlToTab.set(url, tabId);
+  }
+  return sessionAnchors.map((anchor) => {
+    const points: Record<number, number> = {};
+    for (const [url, value] of Object.entries(anchor.pointsByUrl)) {
+      const tabId = urlToTab.get(url);
+      if (tabId !== undefined) points[tabId] = value;
+    }
+    return { id: anchor.id, points };
+  });
+}
+
+async function snapshotGroupIntoSession(
+  session: Session,
+  group: Group,
+  name?: string,
+): Promise<void> {
+  const members = await buildSessionMembers(group);
+  if (name !== undefined) {
+    const trimmed = name.trim();
+    if (trimmed) session.name = trimmed.slice(0, 80);
+  }
+  session.members = members;
+  session.syncMode = group.syncMode;
+  session.leaderMode = group.leaderMode;
+  session.syncEnabled = group.syncEnabled;
+  session.anchors = anchorsFromGroup(group);
+  session.updatedAt = Date.now();
+}
+
+function scheduleAutosave(): void {
+  if (!state.activeSessionId) return;
+  if (autosaveTimer) return;
+  autosaveTimer = setTimeout(() => {
+    autosaveTimer = 0;
+    void (async () => {
+      await ready;
+      const session = state.sessions.find((s) => s.id === state.activeSessionId);
+      const group = getActiveGroup();
+      if (!session || !group) return;
+      await snapshotGroupIntoSession(session, group);
+      await persist();
+    })();
+  }, 2000) as unknown as number;
+}
+
+async function saveSessionFromActiveGroup(
+  name?: string,
+): Promise<StateMessage | { type: 'ERROR'; error: string }> {
+  const group = getActiveGroup();
+  if (!group) {
+    return { type: 'ERROR', error: 'Нет активной группы для сохранения сессии.' };
+  }
+  const members = await buildSessionMembers(group);
+  if (members.length === 0) {
+    return { type: 'ERROR', error: 'В группе нет страниц с URL.' };
+  }
+  const sessionName =
+    (name?.trim() || group.name || `Сессия ${state.sessions.length + 1}`).slice(
+      0,
+      80,
+    );
+  const session: Session = {
+    id: createId('session'),
+    name: sessionName,
+    updatedAt: Date.now(),
+    members,
+    syncMode: group.syncMode,
+    leaderMode: group.leaderMode,
+    syncEnabled: group.syncEnabled,
+    anchors: anchorsFromGroup(group),
+  };
+  state.sessions.push(session);
+  state.activeSessionId = session.id;
+  await persist();
+  return stateResponse();
+}
+
+async function updateSessionFromActiveGroup(
+  sessionId: string,
+  name?: string,
+): Promise<StateMessage | { type: 'ERROR'; error: string }> {
+  const session = state.sessions.find((s) => s.id === sessionId);
+  if (!session) {
+    return { type: 'ERROR', error: 'Сессия не найдена.' };
+  }
+  const group = getActiveGroup();
+  if (!group) {
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        return { type: 'ERROR', error: 'Название не может быть пустым.' };
+      }
+      session.name = trimmed.slice(0, 80);
+      session.updatedAt = Date.now();
+      await persist();
+      return stateResponse();
+    }
+    return { type: 'ERROR', error: 'Нет активной группы для обновления сессии.' };
+  }
+  await snapshotGroupIntoSession(session, group, name);
+  state.activeSessionId = session.id;
+  await persist();
+  return stateResponse();
+}
+
+async function openSession(
+  sessionId: string,
+): Promise<StateMessage | { type: 'ERROR'; error: string }> {
+  const session = state.sessions.find((s) => s.id === sessionId);
+  if (!session) {
+    return { type: 'ERROR', error: 'Сессия не найдена.' };
+  }
+  if (session.members.length === 0) {
+    return { type: 'ERROR', error: 'В сессии нет страниц.' };
+  }
+
+  const opened: Array<{ tab: chrome.tabs.Tab; member: SessionMember }> = [];
+  for (const member of session.members) {
+    try {
+      const tab = await chrome.tabs.create({ url: member.url, active: false });
+      opened.push({ tab, member });
+    } catch {
+      // skip bad urls
+    }
+  }
+  if (opened.length === 0) {
+    return { type: 'ERROR', error: 'Не удалось открыть вкладки сессии.' };
+  }
+
+  // Wait briefly for content scripts
+  await new Promise((r) => setTimeout(r, 800));
+
+  const tabIds: number[] = [];
+  const tabUrls: Record<number, string> = {};
+  const tabTitles: Record<number, string> = {};
+  const scrollScales: Record<number, number> = {};
+
+  for (const { tab, member } of opened) {
+    if (!tab.id) continue;
+    tabIds.push(tab.id);
+    tabUrls[tab.id] = member.url;
+    tabTitles[tab.id] = member.title || tab.title || member.url;
+    scrollScales[tab.id] = member.scrollScale || 1;
+  }
+
+  const group: Group = {
+    id: createId('group'),
+    name: session.name,
+    tabIds,
+    tabUrls,
+    tabTitles,
+    scrollScales,
+    syncEnabled: session.syncEnabled,
+    syncMode: session.syncMode,
+    leaderMode: session.leaderMode,
+    activeLeaderTabId: tabIds[0],
+    fixedLeaderTabId: tabIds[0],
+    anchors: anchorsToGroup(session.anchors, tabIds, tabUrls),
+  };
+
+  state.groups.push(group);
+  state.activeGroupId = group.id;
+  state.activeSessionId = session.id;
+  await persist();
+
+  await Promise.all(
+    opened.map(async ({ tab, member }) => {
+      if (!tab.id) return;
+      await sendTabMessage(tab.id, {
+        type: 'APPLY_SCROLL',
+        progress: member.scrollProgress ?? 0,
+      });
+    }),
+  );
+
+  if (opened[0]?.tab.id) {
+    await chrome.tabs.update(opened[0].tab.id, { active: true });
+  }
+
+  return stateResponse();
+}
+
+function deleteSession(
+  sessionId: string,
+): StateMessage | { type: 'ERROR'; error: string } {
+  if (!state.sessions.some((s) => s.id === sessionId)) {
+    return { type: 'ERROR', error: 'Сессия не найдена.' };
+  }
+  state.sessions = state.sessions.filter((s) => s.id !== sessionId);
+  if (state.activeSessionId === sessionId) {
+    state.activeSessionId = state.sessions[0]?.id;
+  }
+  return stateResponse();
+}
+
 async function createGroupFromActiveTab(): Promise<
   StateMessage | { type: 'ERROR'; error: string }
 > {
@@ -364,6 +616,7 @@ async function addActiveTabToGroup(
   }
   state.activeGroupId = target.id;
   await persist();
+  scheduleAutosave();
   return { type: 'STATE', state };
 }
 
@@ -704,6 +957,7 @@ chrome.runtime.onMessage.addListener(
             }
             removeTabFromAllGroups(message.tabId);
             await persist();
+            scheduleAutosave();
             sendResponse(stateResponse());
             break;
           }
@@ -762,6 +1016,7 @@ chrome.runtime.onMessage.addListener(
             }
             group.syncMode = message.syncMode;
             await persist();
+            scheduleAutosave();
             sendResponse(stateResponse());
             break;
           }
@@ -774,6 +1029,7 @@ chrome.runtime.onMessage.addListener(
             }
             group.leaderMode = message.leaderMode;
             await persist();
+            scheduleAutosave();
             sendResponse(stateResponse());
             break;
           }
@@ -810,6 +1066,42 @@ chrome.runtime.onMessage.addListener(
             }
             group.anchors = [];
             await persist();
+            scheduleAutosave();
+            sendResponse(stateResponse());
+            break;
+          }
+
+          case 'SAVE_SESSION':
+            sendResponse(await saveSessionFromActiveGroup(message.name));
+            break;
+
+          case 'UPDATE_SESSION':
+            sendResponse(
+              await updateSessionFromActiveGroup(
+                message.sessionId,
+                message.name,
+              ),
+            );
+            break;
+
+          case 'OPEN_SESSION':
+            sendResponse(await openSession(message.sessionId));
+            break;
+
+          case 'DELETE_SESSION': {
+            const result = deleteSession(message.sessionId);
+            if (result.type === 'STATE') await persist();
+            sendResponse(result);
+            break;
+          }
+
+          case 'SET_ACTIVE_SESSION': {
+            if (!state.sessions.some((s) => s.id === message.sessionId)) {
+              sendResponse({ type: 'ERROR', error: 'Сессия не найдена.' });
+              break;
+            }
+            state.activeSessionId = message.sessionId;
+            await persist();
             sendResponse(stateResponse());
             break;
           }
@@ -822,6 +1114,7 @@ chrome.runtime.onMessage.addListener(
                 message.progress,
                 message.deltaPx,
               );
+              scheduleAutosave();
             }
             sendResponse({ type: 'STATE', state });
             break;

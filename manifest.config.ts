@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin';
 export default defineManifest({
   manifest_version: 3,
   name: 'Scroll Sync',
-  version: '0.1.0',
+  version: '0.2.0',
   description:
     'Синхронный скролл между вкладками и окнами для перевода (AO3, Фикбук, Google Docs и любые другие страницы).',
   permissions: ['storage', 'tabs', 'scripting'],
