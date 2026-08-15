@@ -1,4 +1,4 @@
-export type SyncMode = 'percent' | 'anchor';
+export type SyncMode = 'pixel' | 'percent' | 'anchor';
 export type LeaderMode = 'active' | 'fixed';
 
 export interface TabRef {
@@ -66,8 +66,10 @@ export type MessageType =
   | 'CLEAR_ANCHORS'
   | 'SET_SCROLL_PERCENT'
   | 'SET_TAB_SCROLL_SCALE'
+  | 'SCROLL_UPDATE'
   | 'SCROLL_PROGRESS'
   | 'APPLY_SCROLL'
+  | 'APPLY_SCROLL_DELTA'
   | 'GET_PROGRESS'
   | 'PROGRESS'
   | 'GET_ADAPTER_STATUS'
@@ -167,6 +169,12 @@ export interface ClearAnchorsMessage extends BaseMessage {
   groupId: string;
 }
 
+export interface ScrollUpdateMessage extends BaseMessage {
+  type: 'SCROLL_UPDATE';
+  deltaPx: number;
+  progress: number;
+}
+
 export interface ScrollProgressMessage extends BaseMessage {
   type: 'SCROLL_PROGRESS';
   progress: number;
@@ -175,6 +183,11 @@ export interface ScrollProgressMessage extends BaseMessage {
 export interface ApplyScrollMessage extends BaseMessage {
   type: 'APPLY_SCROLL';
   progress: number;
+}
+
+export interface ApplyScrollDeltaMessage extends BaseMessage {
+  type: 'APPLY_SCROLL_DELTA';
+  deltaPx: number;
 }
 
 export interface GetProgressMessage extends BaseMessage {
@@ -217,8 +230,10 @@ export type ExtensionMessage =
   | ClearAnchorsMessage
   | SetScrollPercentMessage
   | SetTabScrollScaleMessage
+  | ScrollUpdateMessage
   | ScrollProgressMessage
   | ApplyScrollMessage
+  | ApplyScrollDeltaMessage
   | GetProgressMessage
   | ProgressMessage
   | GetAdapterStatusMessage

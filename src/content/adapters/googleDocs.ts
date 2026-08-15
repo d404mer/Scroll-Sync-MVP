@@ -4,6 +4,8 @@ import {
   pickScrollContainer,
   progressFromElement,
   setProgressOnElement,
+  scrollTopFromElement,
+  setScrollTopOnElement,
 } from './types';
 
 const DOCS_SELECTORS = [
@@ -21,7 +23,6 @@ function findDocsScrollContainer(): HTMLElement | null {
   );
   if (direct) return direct;
 
-  // Walk likely Docs chrome for overflow scroll containers
   const candidates = Array.from(
     document.querySelectorAll<HTMLElement>(
       '.kix-appview-editor, #docs-editor, #docs-editor-container, [role="main"]',
@@ -38,7 +39,6 @@ function findDocsScrollContainer(): HTMLElement | null {
     }
   }
 
-  // Parent chain of the canvas editor
   const editor = document.querySelector('.kix-appview-editor');
   if (editor) {
     let node: HTMLElement | null = editor.parentElement;
@@ -90,6 +90,16 @@ export function createGoogleDocsAdapter(): SiteAdapter {
       const el = container();
       if (!el) return;
       setProgressOnElement(el, clamp01(progress));
+    },
+    getScrollTop() {
+      const el = container();
+      if (!el) return 0;
+      return scrollTopFromElement(el);
+    },
+    setScrollTop(y: number) {
+      const el = container();
+      if (!el) return;
+      setScrollTopOnElement(el, y);
     },
   };
 }

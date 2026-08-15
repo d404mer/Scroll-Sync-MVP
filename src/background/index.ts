@@ -11,7 +11,7 @@ import { createId, emptyState } from '../shared/types';
 import { sendTabMessage } from '../shared/messaging';
 
 let state: AppState = emptyState();
-let ready: Promise<void> = init();
+let ready: Promise<void> = Promise.resolve();
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -57,12 +57,30 @@ function mapWithScales(
   return applyScale(progress, ratio);
 }
 
-async function init(): Promise<void> {
+function urlKey(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
+async function boot(injectScripts: boolean): Promise<void> {
   state = await loadState();
   state.groups = state.groups.map(ensureGroupShape);
-  await restoreTabIdsByUrl();
+  await restoreTabBindings();
   state.groups = state.groups.map(ensureGroupShape);
   await persist();
+  if (injectScripts) {
+    await injectContentScriptsIntoOpenTabs();
+  }
+}
+
+/** Serialize boots so a later init cannot overwrite fresher in-memory state mid-flight. */
+function scheduleBoot(injectScripts: boolean): Promise<void> {
+  ready = ready.catch(() => undefined).then(() => boot(injectScripts));
+  return ready;
 }
 
 async function persist(): Promise<void> {
@@ -97,6 +115,7 @@ function removeTabFromAllGroups(tabId: number): boolean {
       delete anchor.points[tabId];
     }
   }
+  // Only drop groups that lost all members after a real tab close
   state.groups = state.groups.filter((g) => g.tabIds.length > 0);
   if (
     state.activeGroupId &&
@@ -121,15 +140,35 @@ function isInjectableUrl(url: string | undefined): boolean {
   );
 }
 
-async function restoreTabIdsByUrl(): Promise<void> {
+async function tabStillExists(tabId: number): Promise<chrome.tabs.Tab | null> {
+  try {
+    return await chrome.tabs.get(tabId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefer live tabIds (SW sleep does not change them). Remap only dead ids by URL.
+ * Never delete groups here — failed rematch keeps orphaned entries until URL reappears
+ * or the user removes them.
+ */
+async function restoreTabBindings(): Promise<void> {
   const tabs = await chrome.tabs.query({});
   const byUrl = new Map<string, chrome.tabs.Tab[]>();
+  const byKey = new Map<string, chrome.tabs.Tab[]>();
   for (const tab of tabs) {
     if (!tab.id || !tab.url) continue;
     const list = byUrl.get(tab.url) ?? [];
     list.push(tab);
     byUrl.set(tab.url, list);
+    const key = urlKey(tab.url);
+    const loose = byKey.get(key) ?? [];
+    loose.push(tab);
+    byKey.set(key, loose);
   }
+
+  const claimed = new Set<number>();
 
   for (const group of state.groups) {
     ensureGroupShape(group);
@@ -141,16 +180,48 @@ async function restoreTabIdsByUrl(): Promise<void> {
     const idMap = new Map<number, number>();
 
     for (const oldId of oldIds) {
-      const url = group.tabUrls[oldId];
-      if (!url) continue;
-      const candidates = byUrl.get(url);
-      const match = candidates?.find((t) => t.id && !newTabIds.includes(t.id));
-      if (!match?.id) continue;
+      const savedUrl = group.tabUrls[oldId];
+      const savedTitle = group.tabTitles[oldId];
+      const savedScale = getScale(group, oldId);
+
+      const live = await tabStillExists(oldId);
+      if (live?.id && !claimed.has(live.id)) {
+        claimed.add(live.id);
+        idMap.set(oldId, live.id);
+        newTabIds.push(live.id);
+        newUrls[live.id] = live.url ?? savedUrl ?? '';
+        newTitles[live.id] = live.title ?? savedTitle ?? savedUrl ?? '';
+        newScales[live.id] = savedScale;
+        continue;
+      }
+
+      if (!savedUrl) continue;
+
+      const exact = byUrl
+        .get(savedUrl)
+        ?.find((t) => t.id && !claimed.has(t.id) && !newTabIds.includes(t.id));
+      const loose = byKey
+        .get(urlKey(savedUrl))
+        ?.find((t) => t.id && !claimed.has(t.id) && !newTabIds.includes(t.id));
+      const match = exact ?? loose;
+      if (!match?.id) {
+        // Keep orphan slot so the group (and URL) survive until rematch
+        if (!newTabIds.includes(oldId)) {
+          idMap.set(oldId, oldId);
+          newTabIds.push(oldId);
+          newUrls[oldId] = savedUrl;
+          newTitles[oldId] = savedTitle ?? savedUrl;
+          newScales[oldId] = savedScale;
+        }
+        continue;
+      }
+
+      claimed.add(match.id);
       idMap.set(oldId, match.id);
       newTabIds.push(match.id);
-      newUrls[match.id] = url;
-      newTitles[match.id] = match.title ?? group.tabTitles[oldId] ?? url;
-      newScales[match.id] = getScale(group, oldId);
+      newUrls[match.id] = match.url ?? savedUrl;
+      newTitles[match.id] = match.title ?? savedTitle ?? savedUrl;
+      newScales[match.id] = savedScale;
     }
 
     group.anchors = group.anchors.map((anchor) => {
@@ -160,16 +231,26 @@ async function restoreTabIdsByUrl(): Promise<void> {
         const mapped = idMap.get(oldId);
         if (mapped !== undefined) {
           points[mapped] = progress;
+        } else if (newTabIds.includes(oldId)) {
+          points[oldId] = progress;
         }
       }
       return { ...anchor, points };
     });
 
     if (group.fixedLeaderTabId !== undefined) {
-      group.fixedLeaderTabId = idMap.get(group.fixedLeaderTabId);
+      group.fixedLeaderTabId =
+        idMap.get(group.fixedLeaderTabId) ?? group.fixedLeaderTabId;
+      if (!newTabIds.includes(group.fixedLeaderTabId)) {
+        group.fixedLeaderTabId = newTabIds[0];
+      }
     }
     if (group.activeLeaderTabId !== undefined) {
-      group.activeLeaderTabId = idMap.get(group.activeLeaderTabId);
+      group.activeLeaderTabId =
+        idMap.get(group.activeLeaderTabId) ?? group.activeLeaderTabId;
+      if (!newTabIds.includes(group.activeLeaderTabId)) {
+        group.activeLeaderTabId = newTabIds[0];
+      }
     }
 
     group.tabIds = newTabIds;
@@ -178,7 +259,7 @@ async function restoreTabIdsByUrl(): Promise<void> {
     group.scrollScales = newScales;
   }
 
-  state.groups = state.groups.filter((g) => g.tabIds.length > 0);
+  // Do NOT delete groups with zero live matches — keep orphans with saved URLs
   if (
     state.activeGroupId &&
     !state.groups.some((g) => g.id === state.activeGroupId)
@@ -186,6 +267,29 @@ async function restoreTabIdsByUrl(): Promise<void> {
     state.activeGroupId = state.groups[0]?.id;
   }
 }
+
+async function injectContentScriptsIntoOpenTabs(): Promise<void> {
+  const manifest = chrome.runtime.getManifest();
+  const files = manifest.content_scripts?.[0]?.js;
+  if (!files?.length) return;
+
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(
+    tabs.map(async (tab) => {
+      if (!tab.id || !isInjectableUrl(tab.url)) return;
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: [...files],
+        });
+      } catch {
+        // Restricted pages / already injected / no host access
+      }
+    }),
+  );
+}
+
+ready = scheduleBoot(true);
 
 async function createGroupFromActiveTab(): Promise<
   StateMessage | { type: 'ERROR'; error: string }
@@ -205,7 +309,7 @@ async function createGroupFromActiveTab(): Promise<
     tabTitles: { [tab.id]: tab.title ?? tab.url! },
     scrollScales: { [tab.id]: 1 },
     syncEnabled: true,
-    syncMode: 'percent',
+    syncMode: 'pixel',
     leaderMode: 'active',
     activeLeaderTabId: tab.id,
     fixedLeaderTabId: tab.id,
@@ -328,6 +432,7 @@ function mapProgressViaAnchors(
 async function broadcastScroll(
   fromTabId: number,
   progress: number,
+  deltaPx = 0,
 ): Promise<void> {
   const group = findGroupByTabId(fromTabId);
   if (!group || !group.syncEnabled) return;
@@ -341,11 +446,27 @@ async function broadcastScroll(
   const useAnchors =
     group.syncMode === 'anchor' && group.anchors.length >= 2;
 
+  if (group.syncMode === 'pixel') {
+    if (Math.abs(deltaPx) < 0.5) return;
+    await Promise.all(
+      group.tabIds
+        .filter((id) => id !== fromTabId)
+        .map(async (tabId) => {
+          const ratio = getScale(group, tabId) / getScale(group, fromTabId);
+          await sendTabMessage(tabId, {
+            type: 'APPLY_SCROLL_DELTA',
+            deltaPx: deltaPx * ratio,
+          });
+        }),
+    );
+    return;
+  }
+
   await Promise.all(
     group.tabIds
       .filter((id) => id !== fromTabId)
       .map(async (tabId) => {
-        let mapped = useAnchors
+        const mapped = useAnchors
           ? mapProgressViaAnchors(group, fromTabId, tabId, progress)
           : mapWithScales(progress, fromTabId, tabId, group);
         await sendTabMessage(tabId, {
@@ -507,11 +628,11 @@ function stateResponse(): StateMessage {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  ready = init();
+  void scheduleBoot(true);
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  ready = init();
+  void scheduleBoot(true);
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
@@ -557,6 +678,7 @@ chrome.runtime.onMessage.addListener(
       try {
         switch (message.type) {
           case 'GET_STATE':
+            await restoreTabBindings();
             sendResponse(stateResponse());
             break;
 
@@ -686,10 +808,23 @@ chrome.runtime.onMessage.addListener(
             break;
           }
 
+          case 'SCROLL_UPDATE': {
+            const tabId = sender.tab?.id;
+            if (typeof tabId === 'number') {
+              await broadcastScroll(
+                tabId,
+                message.progress,
+                message.deltaPx,
+              );
+            }
+            sendResponse({ type: 'STATE', state });
+            break;
+          }
+
           case 'SCROLL_PROGRESS': {
             const tabId = sender.tab?.id;
             if (typeof tabId === 'number') {
-              await broadcastScroll(tabId, message.progress);
+              await broadcastScroll(tabId, message.progress, 0);
             }
             sendResponse({ type: 'STATE', state });
             break;

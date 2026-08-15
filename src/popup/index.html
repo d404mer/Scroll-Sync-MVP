@@ -96,10 +96,14 @@
         <label class="field">
           <span>Режим синхронизации</span>
           <select id="sync-mode">
+            <option value="pixel">Пиксельный</option>
             <option value="percent">Процентный</option>
             <option value="anchor">Якорный</option>
           </select>
         </label>
+        <p class="muted">
+          Пиксельный — одинаковый сдвиг в px (по умолчанию). Процентный — одинаковая доля страницы.
+        </p>
         <p id="anchor-hint" class="muted hidden">
           Для якорного режима нужно минимум 2 якоря (до этого используется процентный).
         </p>

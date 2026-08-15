@@ -348,7 +348,7 @@ syncMode.addEventListener('change', () => {
   void call({
     type: 'SET_SYNC_MODE',
     groupId: group.id,
-    syncMode: syncMode.value as 'percent' | 'anchor',
+    syncMode: syncMode.value as 'pixel' | 'percent' | 'anchor',
   });
 });
 

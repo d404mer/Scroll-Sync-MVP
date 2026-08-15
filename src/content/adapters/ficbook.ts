@@ -4,6 +4,8 @@ import {
   pickScrollContainer,
   progressFromElement,
   setProgressOnElement,
+  scrollTopFromElement,
+  setScrollTopOnElement,
 } from './types';
 
 export function createFicbookAdapter(): SiteAdapter {
@@ -19,6 +21,18 @@ export function createFicbookAdapter(): SiteAdapter {
     ]);
   }
 
+  function useContainer(): HTMLElement | null {
+    const container = resolveContainer();
+    if (
+      container &&
+      container !== document.scrollingElement &&
+      container.scrollHeight > container.clientHeight + 4
+    ) {
+      return container;
+    }
+    return null;
+  }
+
   return {
     id: 'ficbook',
     label: 'Фикбук',
@@ -26,27 +40,30 @@ export function createFicbookAdapter(): SiteAdapter {
       return true;
     },
     getProgress() {
-      const container = resolveContainer();
-      if (
-        container &&
-        container !== document.scrollingElement &&
-        container.scrollHeight > container.clientHeight + 4
-      ) {
-        return progressFromElement(container);
-      }
+      const container = useContainer();
+      if (container) return progressFromElement(container);
       return fallback.getProgress();
     },
     setProgress(progress: number) {
-      const container = resolveContainer();
-      if (
-        container &&
-        container !== document.scrollingElement &&
-        container.scrollHeight > container.clientHeight + 4
-      ) {
+      const container = useContainer();
+      if (container) {
         setProgressOnElement(container, progress);
         return;
       }
       fallback.setProgress(progress);
+    },
+    getScrollTop() {
+      const container = useContainer();
+      if (container) return scrollTopFromElement(container);
+      return fallback.getScrollTop();
+    },
+    setScrollTop(y: number) {
+      const container = useContainer();
+      if (container) {
+        setScrollTopOnElement(container, y);
+        return;
+      }
+      fallback.setScrollTop(y);
     },
   };
 }

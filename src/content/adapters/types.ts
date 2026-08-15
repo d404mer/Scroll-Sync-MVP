@@ -3,6 +3,8 @@ export interface SiteAdapter {
   label: string;
   getProgress(): number;
   setProgress(progress: number): void;
+  getScrollTop(): number;
+  setScrollTop(y: number): void;
   isReady(): boolean;
   detail?: string;
 }
@@ -26,6 +28,18 @@ export function setProgressOnElement(el: Element | null, progress: number): void
   const max = scrollEl.scrollHeight - scrollEl.clientHeight;
   if (max <= 0) return;
   scrollEl.scrollTop = clamp01(progress) * max;
+}
+
+export function scrollTopFromElement(el: Element | null): number {
+  if (!el) return 0;
+  return (el as HTMLElement).scrollTop;
+}
+
+export function setScrollTopOnElement(el: Element | null, y: number): void {
+  if (!el) return;
+  const scrollEl = el as HTMLElement;
+  const max = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+  scrollEl.scrollTop = Math.min(max, Math.max(0, y));
 }
 
 export function pickScrollContainer(

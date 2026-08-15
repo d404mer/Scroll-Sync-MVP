@@ -4,6 +4,8 @@ import {
   pickScrollContainer,
   progressFromElement,
   setProgressOnElement,
+  scrollTopFromElement,
+  setScrollTopOnElement,
 } from './types';
 
 export function createAo3Adapter(): SiteAdapter {
@@ -18,6 +20,18 @@ export function createAo3Adapter(): SiteAdapter {
     ]);
   }
 
+  function useContainer(): HTMLElement | null {
+    const container = resolveContainer();
+    if (
+      container &&
+      container !== document.scrollingElement &&
+      container.scrollHeight > container.clientHeight + 4
+    ) {
+      return container;
+    }
+    return null;
+  }
+
   return {
     id: 'ao3',
     label: 'Archive of Our Own',
@@ -25,25 +39,30 @@ export function createAo3Adapter(): SiteAdapter {
       return true;
     },
     getProgress() {
-      const container = resolveContainer();
-      if (container && container !== document.scrollingElement) {
-        const p = progressFromElement(container);
-        // If main is not the scroll root, use window/document
-        if (container.scrollHeight > container.clientHeight + 4) return p;
-      }
+      const container = useContainer();
+      if (container) return progressFromElement(container);
       return fallback.getProgress();
     },
     setProgress(progress: number) {
-      const container = resolveContainer();
-      if (
-        container &&
-        container !== document.scrollingElement &&
-        container.scrollHeight > container.clientHeight + 4
-      ) {
+      const container = useContainer();
+      if (container) {
         setProgressOnElement(container, progress);
         return;
       }
       fallback.setProgress(progress);
+    },
+    getScrollTop() {
+      const container = useContainer();
+      if (container) return scrollTopFromElement(container);
+      return fallback.getScrollTop();
+    },
+    setScrollTop(y: number) {
+      const container = useContainer();
+      if (container) {
+        setScrollTopOnElement(container, y);
+        return;
+      }
+      fallback.setScrollTop(y);
     },
   };
 }

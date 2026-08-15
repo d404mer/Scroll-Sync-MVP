@@ -2,11 +2,26 @@ import { resolveAdapter } from './adapters';
 import type { ExtensionMessage } from '../shared/types';
 import type { SiteAdapter } from './adapters/types';
 
+declare global {
+  interface Window {
+    __scrollSyncContentLoaded?: boolean;
+  }
+}
+
+if (window.__scrollSyncContentLoaded) {
+  // Already injected (manifest + executeScript); skip duplicate listeners
+} else {
+  window.__scrollSyncContentLoaded = true;
+  bootContentScript();
+}
+
+function bootContentScript(): void {
 const adapter: SiteAdapter = resolveAdapter();
 let applying = false;
 let applyIgnoreUntil = 0;
 let rafScheduled = false;
-let lastSent = -1;
+let lastSentProgress = -1;
+let lastScrollTop = adapter.getScrollTop();
 const listenedElements = new WeakSet<EventTarget>();
 
 function getProgress(): number {
@@ -17,26 +32,63 @@ function getProgress(): number {
   }
 }
 
-function setProgress(progress: number): void {
-  applying = true;
-  applyIgnoreUntil = performance.now() + 180;
+function getScrollTop(): number {
   try {
-    adapter.setProgress(progress);
-  } finally {
-    requestAnimationFrame(() => {
-      applying = false;
-    });
+    return adapter.getScrollTop();
+  } catch {
+    return 0;
   }
 }
 
-function emitProgress(): void {
-  if (applying || performance.now() < applyIgnoreUntil) return;
+function beginApplying(): void {
+  applying = true;
+  applyIgnoreUntil = performance.now() + 180;
+  requestAnimationFrame(() => {
+    applying = false;
+  });
+}
+
+function setProgress(progress: number): void {
+  beginApplying();
+  try {
+    adapter.setProgress(progress);
+  } finally {
+    lastScrollTop = getScrollTop();
+    lastSentProgress = progress;
+  }
+}
+
+function applyDelta(deltaPx: number): void {
+  beginApplying();
+  try {
+    adapter.setScrollTop(getScrollTop() + deltaPx);
+  } finally {
+    lastScrollTop = getScrollTop();
+    lastSentProgress = getProgress();
+  }
+}
+
+function emitScrollUpdate(): void {
+  if (applying || performance.now() < applyIgnoreUntil) {
+    lastScrollTop = getScrollTop();
+    return;
+  }
+
+  const currentTop = getScrollTop();
+  const deltaPx = currentTop - lastScrollTop;
+  lastScrollTop = currentTop;
+
   const progress = getProgress();
-  if (Math.abs(progress - lastSent) < 0.0005) return;
-  lastSent = progress;
+  const progressChanged = Math.abs(progress - lastSentProgress) >= 0.0005;
+  const deltaChanged = Math.abs(deltaPx) >= 0.5;
+
+  if (!progressChanged && !deltaChanged) return;
+  lastSentProgress = progress;
+
   void chrome.runtime
     .sendMessage({
-      type: 'SCROLL_PROGRESS',
+      type: 'SCROLL_UPDATE',
+      deltaPx,
       progress,
     } satisfies ExtensionMessage)
     .catch(() => {
@@ -49,7 +101,7 @@ function onScroll(): void {
   rafScheduled = true;
   requestAnimationFrame(() => {
     rafScheduled = false;
-    emitProgress();
+    emitScrollUpdate();
   });
 }
 
@@ -119,8 +171,12 @@ chrome.runtime.onMessage.addListener(
     switch (message.type) {
       case 'APPLY_SCROLL':
         setProgress(message.progress);
-        lastSent = message.progress;
         sendResponse({ type: 'PROGRESS', progress: message.progress });
+        break;
+
+      case 'APPLY_SCROLL_DELTA':
+        applyDelta(message.deltaPx);
+        sendResponse({ type: 'PROGRESS', progress: getProgress() });
         break;
 
       case 'GET_PROGRESS':
@@ -145,3 +201,4 @@ chrome.runtime.onMessage.addListener(
     return false;
   },
 );
+}
