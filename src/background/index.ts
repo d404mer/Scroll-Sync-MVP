@@ -72,8 +72,9 @@ async function boot(injectScripts: boolean): Promise<void> {
   await restoreTabBindings();
   state.groups = state.groups.map(ensureGroupShape);
   await persist();
+  // Never block message handling on injection — some tabs hang executeScript
   if (injectScripts) {
-    await injectContentScriptsIntoOpenTabs();
+    void injectContentScriptsIntoOpenTabs();
   }
 }
 
@@ -274,14 +275,19 @@ async function injectContentScriptsIntoOpenTabs(): Promise<void> {
   if (!files?.length) return;
 
   const tabs = await chrome.tabs.query({});
-  await Promise.all(
+  await Promise.allSettled(
     tabs.map(async (tab) => {
       if (!tab.id || !isInjectableUrl(tab.url)) return;
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: [...files],
-        });
+        await Promise.race([
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: [...files],
+          }),
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 1500);
+          }),
+        ]);
       } catch {
         // Restricted pages / already injected / no host access
       }
