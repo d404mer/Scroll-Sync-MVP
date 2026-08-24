@@ -50,7 +50,14 @@ function parseTagVersion(tag: string): string | undefined {
 }
 
 function zipNameFor(version: string): string {
-  return `Scroll Sync ${version}.zip`;
+  return `Scroll-Sync-${version}.zip`;
+}
+
+function isReleaseZip(name: string | undefined, version: string): boolean {
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  const base = `scroll-sync-${version}`;
+  return n === `${base}.zip` || n === base;
 }
 
 async function loadCache(): Promise<UpdateCache | undefined> {
@@ -101,8 +108,9 @@ export async function fetchRemoteVersion(force: boolean): Promise<void> {
       ? parseTagVersion(json.tag_name)
       : undefined;
     if (!latestVersion) return;
-    const expected = zipNameFor(latestVersion);
-    const asset = (json.assets ?? []).find((item) => item.name === expected);
+    const asset = (json.assets ?? []).find((item) =>
+      isReleaseZip(item.name, latestVersion),
+    );
     const downloadUrl = asset?.browser_download_url?.trim();
     if (!downloadUrl) return;
     const next: UpdateCache = {
