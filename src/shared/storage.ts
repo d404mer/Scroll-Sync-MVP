@@ -9,6 +9,8 @@ export async function loadState(): Promise<AppState> {
   return {
     groups: raw.groups,
     activeGroupId: raw.activeGroupId,
+    sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
+    activeSessionId: raw.activeSessionId,
   };
 }
 

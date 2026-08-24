@@ -10,8 +10,7 @@ export interface TabRef {
 
 export interface Anchor {
   id: string;
-  /** Progress 0..1 keyed by tabId at the time the anchor was created.
-   * After restore, remapped via tabUrls. */
+  /** 0..1 на момент постановки якоря, ключ - tabId; после рестарта перекладываем через url */
   points: Record<number, number>;
 }
 
@@ -19,27 +18,52 @@ export interface Group {
   id: string;
   name: string;
   tabIds: number[];
-  /** URL snapshot for restore after browser restart */
+  /** url вкладок, чтобы после рестарта браузера снова найти их */
   tabUrls: Record<number, string>;
-  /** Title snapshot for UI */
+  /** заголовки для списка в popup */
   tabTitles: Record<number, string>;
   /**
-   * Scroll speed scale per tab (1 = 100%).
-   * 0.5 = twice as slow, 2 = twice as fast, -1 = inverted.
+   * масштаб скорости по вкладке: 1 = как лидер, 0.5 медленнее, -1 наоборот
    */
   scrollScales: Record<number, number>;
   syncEnabled: boolean;
   syncMode: SyncMode;
   leaderMode: LeaderMode;
   fixedLeaderTabId?: number;
-  /** Last known active leader when leaderMode === 'active' */
+  /** кто последний крутил, если режим «активная вкладка» */
   activeLeaderTabId?: number;
   anchors: Anchor[];
+}
+
+export interface SessionMember {
+  url: string;
+  title: string;
+  scrollProgress: number;
+  scrollScale: number;
+}
+
+export interface SessionAnchor {
+  id: string;
+  pointsByUrl: Record<string, number>;
+}
+
+export interface Session {
+  id: string;
+  name: string;
+  updatedAt: number;
+  members: SessionMember[];
+  syncMode: SyncMode;
+  leaderMode: LeaderMode;
+  syncEnabled: boolean;
+  anchors: SessionAnchor[];
 }
 
 export interface AppState {
   groups: Group[];
   activeGroupId?: string;
+  sessions: Session[];
+  /** куда пишет автосохранение; без явного «сохранить» сессию сами не плодим */
+  activeSessionId?: string;
 }
 
 export interface AdapterStatus {
@@ -47,6 +71,14 @@ export interface AdapterStatus {
   label: string;
   ok: boolean;
   detail?: string;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  downloadUrl: string;
+  notes?: string;
+  available: boolean;
 }
 
 export type MessageType =
@@ -66,6 +98,13 @@ export type MessageType =
   | 'CLEAR_ANCHORS'
   | 'SET_SCROLL_PERCENT'
   | 'SET_TAB_SCROLL_SCALE'
+  | 'SAVE_SESSION'
+  | 'UPDATE_SESSION'
+  | 'OPEN_SESSION'
+  | 'DELETE_SESSION'
+  | 'SET_ACTIVE_SESSION'
+  | 'DOWNLOAD_UPDATE'
+  | 'DISMISS_UPDATE'
   | 'SCROLL_UPDATE'
   | 'SCROLL_PROGRESS'
   | 'APPLY_SCROLL'
@@ -87,6 +126,7 @@ export interface GetStateMessage extends BaseMessage {
 export interface StateMessage extends BaseMessage {
   type: 'STATE';
   state: AppState;
+  update?: UpdateInfo;
 }
 
 export interface CreateGroupMessage extends BaseMessage {
@@ -123,7 +163,7 @@ export interface SetActiveGroupMessage extends BaseMessage {
 export interface SetScrollPercentMessage extends BaseMessage {
   type: 'SET_SCROLL_PERCENT';
   groupId: string;
-  /** Logical percent; may be negative or >100, then scaled per tab */
+  /** можно уходить за 0..100 - дальше режет clamp и масштаб вкладок */
   percent: number;
 }
 
@@ -131,7 +171,7 @@ export interface SetTabScrollScaleMessage extends BaseMessage {
   type: 'SET_TAB_SCROLL_SCALE';
   groupId: string;
   tabId: number;
-  /** Multiplier: 1 = 100%, 0.5 = slower, -1 = inverted */
+  /** 1 = 100%, 0.5 медленнее, отрицательное - зеркалим направление */
   scale: number;
 }
 
@@ -167,6 +207,40 @@ export interface AddAnchorMessage extends BaseMessage {
 export interface ClearAnchorsMessage extends BaseMessage {
   type: 'CLEAR_ANCHORS';
   groupId: string;
+}
+
+export interface SaveSessionMessage extends BaseMessage {
+  type: 'SAVE_SESSION';
+  name?: string;
+}
+
+export interface UpdateSessionMessage extends BaseMessage {
+  type: 'UPDATE_SESSION';
+  sessionId: string;
+  name?: string;
+}
+
+export interface OpenSessionMessage extends BaseMessage {
+  type: 'OPEN_SESSION';
+  sessionId: string;
+}
+
+export interface DeleteSessionMessage extends BaseMessage {
+  type: 'DELETE_SESSION';
+  sessionId: string;
+}
+
+export interface SetActiveSessionMessage extends BaseMessage {
+  type: 'SET_ACTIVE_SESSION';
+  sessionId: string;
+}
+
+export interface DownloadUpdateMessage extends BaseMessage {
+  type: 'DOWNLOAD_UPDATE';
+}
+
+export interface DismissUpdateMessage extends BaseMessage {
+  type: 'DISMISS_UPDATE';
 }
 
 export interface ScrollUpdateMessage extends BaseMessage {
@@ -230,6 +304,13 @@ export type ExtensionMessage =
   | ClearAnchorsMessage
   | SetScrollPercentMessage
   | SetTabScrollScaleMessage
+  | SaveSessionMessage
+  | UpdateSessionMessage
+  | OpenSessionMessage
+  | DeleteSessionMessage
+  | SetActiveSessionMessage
+  | DownloadUpdateMessage
+  | DismissUpdateMessage
   | ScrollUpdateMessage
   | ScrollProgressMessage
   | ApplyScrollMessage
@@ -241,9 +322,13 @@ export type ExtensionMessage =
   | ErrorMessage;
 
 export const STORAGE_KEY = 'scrollSyncState';
+export const UPDATE_CACHE_KEY = 'scrollSyncUpdateCache';
+export const UPDATE_DISMISSED_KEY = 'scrollSyncDismissedVersion';
+export const LATEST_RELEASE_URL =
+  'https://api.github.com/repos/d404mer/Scroll-Sync-MVP/releases/latest';
 
 export function emptyState(): AppState {
-  return { groups: [] };
+  return { groups: [], sessions: [] };
 }
 
 export function createId(prefix: string): string {
