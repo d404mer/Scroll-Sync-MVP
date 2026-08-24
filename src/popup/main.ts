@@ -8,6 +8,7 @@ import type {
   ProgressMessage,
   Session,
   StateMessage,
+  UpdateInfo,
 } from '../shared/types';
 
 const groupSelect = document.getElementById('group-select') as HTMLSelectElement;
@@ -38,8 +39,13 @@ const panelSettings = document.getElementById('panel-settings') as HTMLElement;
 const tabGroupsBtn = document.getElementById('tab-groups') as HTMLButtonElement;
 const tabSessionsBtn = document.getElementById('tab-sessions') as HTMLButtonElement;
 const tabSettingsBtn = document.getElementById('tab-settings') as HTMLButtonElement;
+const updateBanner = document.getElementById('update-banner') as HTMLElement;
+const updateText = document.getElementById('update-text') as HTMLElement;
+const updateHint = document.getElementById('update-hint') as HTMLElement;
 
 let state: AppState = { groups: [], sessions: [] };
+let update: UpdateInfo | undefined;
+let downloadHint = false;
 let rendering = false;
 
 function showError(message: string | null): void {
@@ -69,6 +75,7 @@ async function call(message: ExtensionMessage): Promise<void> {
   if (isState(res)) {
     showError(null);
     state = res.state;
+    update = res.update;
     if (!state.sessions) state.sessions = [];
     render();
     void refreshScrollPercent();
@@ -282,8 +289,21 @@ function renderSessionList(): void {
   }
 }
 
+function renderUpdateBanner(): void {
+  if (!update?.available) {
+    downloadHint = false;
+    updateBanner.classList.add('hidden');
+    updateHint.classList.add('hidden');
+    return;
+  }
+  updateBanner.classList.remove('hidden');
+  updateText.textContent = `доступна новая версия ${update.latest} (сейчас ${update.current})`;
+  updateHint.classList.toggle('hidden', !downloadHint);
+}
+
 function render(): void {
   rendering = true;
+  renderUpdateBanner();
   const groups = state.groups;
   const group = activeGroup();
   const session = activeSession();
@@ -380,6 +400,28 @@ async function applyScrollPercent(): Promise<void> {
 tabGroupsBtn.addEventListener('click', () => switchTab('groups'));
 tabSessionsBtn.addEventListener('click', () => switchTab('sessions'));
 tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
+
+document.getElementById('btn-download-update')!.addEventListener('click', () => {
+  void (async () => {
+    const res = await sendRuntimeMessage({ type: 'DOWNLOAD_UPDATE' });
+    if (isError(res)) {
+      showError(res.error);
+      return;
+    }
+    if (isState(res)) {
+      showError(null);
+      state = res.state;
+      update = res.update;
+      if (!state.sessions) state.sessions = [];
+      downloadHint = true;
+      render();
+    }
+  })();
+});
+
+document.getElementById('btn-dismiss-update')!.addEventListener('click', () => {
+  void call({ type: 'DISMISS_UPDATE' });
+});
 
 document.getElementById('btn-create')!.addEventListener('click', () => {
   void call({ type: 'CREATE_GROUP' });

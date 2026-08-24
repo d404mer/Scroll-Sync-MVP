@@ -6,7 +6,7 @@ export default defineManifest({
   version: '0.2.0',
   description:
     'Синхронный скролл между вкладками и окнами для перевода (AO3, Фикбук, Google Docs и любые другие страницы).',
-  permissions: ['storage', 'tabs', 'scripting'],
+  permissions: ['storage', 'tabs', 'scripting', 'alarms', 'downloads'],
   host_permissions: ['<all_urls>'],
   background: {
     service_worker: 'src/background/index.ts',

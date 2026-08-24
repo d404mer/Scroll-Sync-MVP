@@ -73,6 +73,14 @@ export interface AdapterStatus {
   detail?: string;
 }
 
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  downloadUrl: string;
+  notes?: string;
+  available: boolean;
+}
+
 export type MessageType =
   | 'GET_STATE'
   | 'STATE'
@@ -95,6 +103,8 @@ export type MessageType =
   | 'OPEN_SESSION'
   | 'DELETE_SESSION'
   | 'SET_ACTIVE_SESSION'
+  | 'DOWNLOAD_UPDATE'
+  | 'DISMISS_UPDATE'
   | 'SCROLL_UPDATE'
   | 'SCROLL_PROGRESS'
   | 'APPLY_SCROLL'
@@ -116,6 +126,7 @@ export interface GetStateMessage extends BaseMessage {
 export interface StateMessage extends BaseMessage {
   type: 'STATE';
   state: AppState;
+  update?: UpdateInfo;
 }
 
 export interface CreateGroupMessage extends BaseMessage {
@@ -224,6 +235,14 @@ export interface SetActiveSessionMessage extends BaseMessage {
   sessionId: string;
 }
 
+export interface DownloadUpdateMessage extends BaseMessage {
+  type: 'DOWNLOAD_UPDATE';
+}
+
+export interface DismissUpdateMessage extends BaseMessage {
+  type: 'DISMISS_UPDATE';
+}
+
 export interface ScrollUpdateMessage extends BaseMessage {
   type: 'SCROLL_UPDATE';
   deltaPx: number;
@@ -290,6 +309,8 @@ export type ExtensionMessage =
   | OpenSessionMessage
   | DeleteSessionMessage
   | SetActiveSessionMessage
+  | DownloadUpdateMessage
+  | DismissUpdateMessage
   | ScrollUpdateMessage
   | ScrollProgressMessage
   | ApplyScrollMessage
@@ -301,6 +322,10 @@ export type ExtensionMessage =
   | ErrorMessage;
 
 export const STORAGE_KEY = 'scrollSyncState';
+export const UPDATE_CACHE_KEY = 'scrollSyncUpdateCache';
+export const UPDATE_DISMISSED_KEY = 'scrollSyncDismissedVersion';
+export const VERSION_JSON_URL =
+  'https://raw.githubusercontent.com/d404mer/Scroll-Sync-MVP/main/version.json';
 
 export function emptyState(): AppState {
   return { groups: [], sessions: [] };

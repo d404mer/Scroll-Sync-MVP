@@ -29,6 +29,27 @@ header h1 {
   font-weight: 700;
 }
 
+.update-banner {
+  border: 1px solid #777;
+  background: #1a1a1a;
+  padding: 8px;
+  margin: 0 0 8px;
+}
+
+.update-banner p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.update-banner .row {
+  margin: 0;
+}
+
+.update-banner button {
+  flex: 1;
+}
+
 .muted {
   color: #888;
   font-size: 11px;

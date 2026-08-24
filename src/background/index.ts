@@ -11,6 +11,14 @@ import type {
 } from '../shared/types';
 import { createId, emptyState } from '../shared/types';
 import { sendTabMessage } from '../shared/messaging';
+import {
+  UPDATE_ALARM,
+  buildUpdateInfo,
+  dismissCurrentUpdate,
+  ensureUpdateAlarm,
+  fetchRemoteVersion,
+  startUpdateDownload,
+} from '../shared/update';
 
 let state: AppState = emptyState();
 let ready: Promise<void> = Promise.resolve();
@@ -76,6 +84,8 @@ async function boot(injectScripts: boolean): Promise<void> {
   await restoreTabBindings();
   state.groups = state.groups.map(ensureGroupShape);
   await persist();
+  void ensureUpdateAlarm();
+  void fetchRemoteVersion(false);
   // инъекцию не ждём: на части вкладок executeScript просто зависает
   if (injectScripts) {
     void injectContentScriptsIntoOpenTabs();
@@ -886,6 +896,19 @@ function stateResponse(): StateMessage {
   return { type: 'STATE', state };
 }
 
+/** к каждому STATE приклеиваем, есть ли апдейт — popup рисует баннер */
+async function replyWithState(result: ExtensionMessage): Promise<ExtensionMessage> {
+  if (result.type === 'STATE') {
+    return { ...result, update: await buildUpdateInfo() };
+  }
+  return result;
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== UPDATE_ALARM) return;
+  void fetchRemoteVersion(true);
+});
+
 chrome.runtime.onInstalled.addListener(() => {
   void scheduleBoot(true);
 });
@@ -930,65 +953,84 @@ chrome.commands.onCommand.addListener(async (command) => {
 });
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, sender, sendResponse) => {
+  (message: ExtensionMessage, sender, respond) => {
     void (async () => {
       await ready;
+      const reply = async (payload: ExtensionMessage) => {
+        respond(await replyWithState(payload));
+      };
 
       try {
         switch (message.type) {
           case 'GET_STATE':
             await restoreTabBindings();
-            sendResponse(stateResponse());
+            await fetchRemoteVersion(false);
+            await reply(stateResponse());
+            break;
+
+          case 'DOWNLOAD_UPDATE': {
+            const err = await startUpdateDownload();
+            if (err) {
+              await reply({ type: 'ERROR', error: err });
+            } else {
+              await reply(stateResponse());
+            }
+            break;
+          }
+
+          case 'DISMISS_UPDATE':
+            await dismissCurrentUpdate();
+            await reply(stateResponse());
             break;
 
           case 'CREATE_GROUP':
-            sendResponse(await createGroupFromActiveTab());
+            await reply(await createGroupFromActiveTab());
             break;
 
           case 'ADD_TAB_TO_GROUP':
-            sendResponse(await addActiveTabToGroup(message.groupId));
+            await reply(await addActiveTabToGroup(message.groupId));
             break;
 
           case 'REMOVE_TAB_FROM_GROUP': {
             const group = state.groups.find((g) => g.id === message.groupId);
             if (!group) {
-              sendResponse({ type: 'ERROR', error: 'Группа не найдена.' });
+              await reply({ type: 'ERROR', error: 'Группа не найдена.' });
               break;
             }
             removeTabFromAllGroups(message.tabId);
             await persist();
             scheduleAutosave();
-            sendResponse(stateResponse());
+            await reply(stateResponse());
             break;
           }
 
           case 'SET_ACTIVE_GROUP': {
             if (!state.groups.some((g) => g.id === message.groupId)) {
-              sendResponse({ type: 'ERROR', error: 'Группа не найдена.' });
+              await reply({ type: 'ERROR', error: 'Группа не найдена.' });
               break;
             }
             state.activeGroupId = message.groupId;
             await persist();
-            sendResponse(stateResponse());
+            await reply(stateResponse());
             break;
           }
 
           case 'RENAME_GROUP': {
             const result = renameGroup(message.groupId, message.name);
             if (result.type === 'STATE') await persist();
-            sendResponse(result);
+            await reply(result);
             break;
           }
 
           case 'DELETE_GROUP': {
             const result = deleteGroup(message.groupId);
             if (result.type === 'STATE') await persist();
-            sendResponse(result);
+            await reply(result);
             break;
           }
 
           case 'SET_SCROLL_PERCENT':
-            sendResponse(
+            await reply(
               await setScrollPercent(message.groupId, message.percent),
             );
             break;
@@ -1000,48 +1042,48 @@ chrome.runtime.onMessage.addListener(
               message.scale,
             );
             if (result.type === 'STATE') await persist();
-            sendResponse(result);
+            await reply(result);
             break;
           }
 
           case 'TOGGLE_SYNC':
-            sendResponse(await toggleSync(message.groupId, message.enabled));
+            await reply(await toggleSync(message.groupId, message.enabled));
             break;
 
           case 'SET_SYNC_MODE': {
             const group = state.groups.find((g) => g.id === message.groupId);
             if (!group) {
-              sendResponse({ type: 'ERROR', error: 'Группа не найдена.' });
+              await reply({ type: 'ERROR', error: 'Группа не найдена.' });
               break;
             }
             group.syncMode = message.syncMode;
             await persist();
             scheduleAutosave();
-            sendResponse(stateResponse());
+            await reply(stateResponse());
             break;
           }
 
           case 'SET_LEADER_MODE': {
             const group = state.groups.find((g) => g.id === message.groupId);
             if (!group) {
-              sendResponse({ type: 'ERROR', error: 'Группа не найдена.' });
+              await reply({ type: 'ERROR', error: 'Группа не найдена.' });
               break;
             }
             group.leaderMode = message.leaderMode;
             await persist();
             scheduleAutosave();
-            sendResponse(stateResponse());
+            await reply(stateResponse());
             break;
           }
 
           case 'SET_FIXED_LEADER': {
             const group = state.groups.find((g) => g.id === message.groupId);
             if (!group) {
-              sendResponse({ type: 'ERROR', error: 'Группа не найдена.' });
+              await reply({ type: 'ERROR', error: 'Группа не найдена.' });
               break;
             }
             if (!group.tabIds.includes(message.tabId)) {
-              sendResponse({
+              await reply({
                 type: 'ERROR',
                 error: 'Вкладка не входит в группу.',
               });
@@ -1050,33 +1092,33 @@ chrome.runtime.onMessage.addListener(
             group.fixedLeaderTabId = message.tabId;
             group.leaderMode = 'fixed';
             await persist();
-            sendResponse(stateResponse());
+            await reply(stateResponse());
             break;
           }
 
           case 'ADD_ANCHOR':
-            sendResponse(await addAnchor(message.groupId));
+            await reply(await addAnchor(message.groupId));
             break;
 
           case 'CLEAR_ANCHORS': {
             const group = state.groups.find((g) => g.id === message.groupId);
             if (!group) {
-              sendResponse({ type: 'ERROR', error: 'Группа не найдена.' });
+              await reply({ type: 'ERROR', error: 'Группа не найдена.' });
               break;
             }
             group.anchors = [];
             await persist();
             scheduleAutosave();
-            sendResponse(stateResponse());
+            await reply(stateResponse());
             break;
           }
 
           case 'SAVE_SESSION':
-            sendResponse(await saveSessionFromActiveGroup(message.name));
+            await reply(await saveSessionFromActiveGroup(message.name));
             break;
 
           case 'UPDATE_SESSION':
-            sendResponse(
+            await reply(
               await updateSessionFromActiveGroup(
                 message.sessionId,
                 message.name,
@@ -1085,24 +1127,24 @@ chrome.runtime.onMessage.addListener(
             break;
 
           case 'OPEN_SESSION':
-            sendResponse(await openSession(message.sessionId));
+            await reply(await openSession(message.sessionId));
             break;
 
           case 'DELETE_SESSION': {
             const result = deleteSession(message.sessionId);
             if (result.type === 'STATE') await persist();
-            sendResponse(result);
+            await reply(result);
             break;
           }
 
           case 'SET_ACTIVE_SESSION': {
             if (!state.sessions.some((s) => s.id === message.sessionId)) {
-              sendResponse({ type: 'ERROR', error: 'Сессия не найдена.' });
+              await reply({ type: 'ERROR', error: 'Сессия не найдена.' });
               break;
             }
             state.activeSessionId = message.sessionId;
             await persist();
-            sendResponse(stateResponse());
+            await reply(stateResponse());
             break;
           }
 
@@ -1116,7 +1158,7 @@ chrome.runtime.onMessage.addListener(
               );
               scheduleAutosave();
             }
-            sendResponse({ type: 'STATE', state });
+            await reply({ type: 'STATE', state });
             break;
           }
 
@@ -1125,18 +1167,18 @@ chrome.runtime.onMessage.addListener(
             if (typeof tabId === 'number') {
               await broadcastScroll(tabId, message.progress, 0);
             }
-            sendResponse({ type: 'STATE', state });
+            await reply({ type: 'STATE', state });
             break;
           }
 
           default:
-            sendResponse({
+            await reply({
               type: 'ERROR',
               error: `Неизвестное сообщение: ${message.type}`,
             });
         }
       } catch (err) {
-        sendResponse({
+        await reply({
           type: 'ERROR',
           error: err instanceof Error ? err.message : String(err),
         });

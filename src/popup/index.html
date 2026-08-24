@@ -12,6 +12,17 @@
       <p id="adapter-status" class="muted">Адаптер: …</p>
     </header>
 
+    <div id="update-banner" class="update-banner hidden">
+      <p id="update-text">доступна новая версия</p>
+      <p id="update-hint" class="muted hidden">
+        Распакуйте zip и в расширениях нажмите Обновить или загрузите папку заново.
+      </p>
+      <div class="row gap">
+        <button id="btn-download-update" type="button">скачать новую версию</button>
+        <button id="btn-dismiss-update" type="button" class="secondary">скрыть</button>
+      </div>
+    </div>
+
     <nav class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="groups" id="tab-groups">
         Основное
