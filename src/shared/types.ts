@@ -324,8 +324,8 @@ export type ExtensionMessage =
 export const STORAGE_KEY = 'scrollSyncState';
 export const UPDATE_CACHE_KEY = 'scrollSyncUpdateCache';
 export const UPDATE_DISMISSED_KEY = 'scrollSyncDismissedVersion';
-export const VERSION_JSON_URL =
-  'https://raw.githubusercontent.com/d404mer/Scroll-Sync-MVP/main/version.json';
+export const LATEST_RELEASE_URL =
+  'https://api.github.com/repos/d404mer/Scroll-Sync-MVP/releases/latest';
 
 export function emptyState(): AppState {
   return { groups: [], sessions: [] };

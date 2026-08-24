@@ -1,8 +1,8 @@
 import type { UpdateInfo } from './types';
 import {
+  LATEST_RELEASE_URL,
   UPDATE_CACHE_KEY,
   UPDATE_DISMISSED_KEY,
-  VERSION_JSON_URL,
 } from './types';
 
 const CACHE_MS = 6 * 60 * 60 * 1000;
@@ -15,10 +15,15 @@ interface UpdateCache {
   checkedAt: number;
 }
 
-interface RemoteVersion {
-  version?: string;
-  downloadUrl?: string;
-  notes?: string;
+interface GithubAsset {
+  name?: string;
+  browser_download_url?: string;
+}
+
+interface GithubRelease {
+  tag_name?: string;
+  body?: string;
+  assets?: GithubAsset[];
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -36,6 +41,16 @@ export function compareVersions(a: string, b: string): number {
 
 function localVersion(): string {
   return chrome.runtime.getManifest().version;
+}
+
+/** тег релиза — только x.y.z */
+function parseTagVersion(tag: string): string | undefined {
+  const value = tag.trim();
+  return /^\d+\.\d+\.\d+$/.test(value) ? value : undefined;
+}
+
+function zipNameFor(version: string): string {
+  return `Scroll Sync ${version}.zip`;
 }
 
 async function loadCache(): Promise<UpdateCache | undefined> {
@@ -72,19 +87,28 @@ export async function fetchRemoteVersion(force: boolean): Promise<void> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch(VERSION_JSON_URL, {
+    const res = await fetch(LATEST_RELEASE_URL, {
       cache: 'no-store',
       signal: ctrl.signal,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Scroll-Sync-MVP',
+      },
     });
     if (!res.ok) return;
-    const json = (await res.json()) as RemoteVersion;
-    const latestVersion = json.version?.trim();
-    const downloadUrl = json.downloadUrl?.trim();
-    if (!latestVersion || !downloadUrl) return;
+    const json = (await res.json()) as GithubRelease;
+    const latestVersion = json.tag_name
+      ? parseTagVersion(json.tag_name)
+      : undefined;
+    if (!latestVersion) return;
+    const expected = zipNameFor(latestVersion);
+    const asset = (json.assets ?? []).find((item) => item.name === expected);
+    const downloadUrl = asset?.browser_download_url?.trim();
+    if (!downloadUrl) return;
     const next: UpdateCache = {
       latestVersion,
       downloadUrl,
-      notes: json.notes?.trim() ?? '',
+      notes: json.body?.trim() ?? '',
       checkedAt: Date.now(),
     };
     await chrome.storage.local.set({ [UPDATE_CACHE_KEY]: next });
@@ -111,7 +135,7 @@ export async function startUpdateDownload(): Promise<string | undefined> {
   try {
     await chrome.downloads.download({
       url: cache.downloadUrl,
-      filename: `scroll-sync-${cache.latestVersion}.zip`,
+      filename: zipNameFor(cache.latestVersion),
       saveAs: true,
     });
     return undefined;
